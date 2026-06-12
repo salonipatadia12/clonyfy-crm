@@ -1,19 +1,32 @@
 import { DatabaseSync } from 'node:sqlite'
 import path from 'node:path'
+import os from 'node:os'
 import fs from 'node:fs'
 import { SCHEMA } from './schema'
+import { ensureSeeded } from './seeder'
 
 // ---- Connection singleton ---------------------------------------------------
 
 let _db: DatabaseSync | null = null
 
+// On serverless hosts (e.g. Vercel) the project dir is read-only; only the
+// system temp dir is writable. Locally we keep the DB in ./data.
+function dataDir(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), 'clonify')
+  }
+  return path.join(process.cwd(), 'data')
+}
+
 export function getDb(): DatabaseSync {
   if (_db) return _db
-  const dataDir = path.join(process.cwd(), 'data')
-  fs.mkdirSync(dataDir, { recursive: true })
-  const db = new DatabaseSync(path.join(dataDir, 'clonify.db'))
+  const dir = dataDir()
+  fs.mkdirSync(dir, { recursive: true })
+  const db = new DatabaseSync(path.join(dir, 'clonify.db'))
   db.exec('PRAGMA journal_mode = WAL')
   db.exec(SCHEMA)
+  // Auto-seed when empty (fresh serverless instance with no committed DB).
+  ensureSeeded(db)
   _db = db
   return db
 }
