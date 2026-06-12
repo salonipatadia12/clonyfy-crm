@@ -1,0 +1,11 @@
+node_modules/
+.env
+.claude-flow/data/
+*.log
+.next/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+tsconfig.tsbuildinfo
