@@ -26,11 +26,12 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<T> 
 export interface InfluencerFilters {
   search?: string
   niche?: string[]
-  tier?: string[]
   stage?: string[]
   market?: string[]
   accountType?: string[]
   verifiedOnly?: boolean
+  inPipeline?: boolean
+  notInPipeline?: boolean
   minFollowers?: number
   maxFollowers?: number
   sort?: string
@@ -43,11 +44,12 @@ export function filtersToQuery(f: InfluencerFilters): string {
   const p = new URLSearchParams()
   if (f.search) p.set('search', f.search)
   if (f.niche?.length) p.set('niche', f.niche.join(','))
-  if (f.tier?.length) p.set('tier', f.tier.join(','))
   if (f.stage?.length) p.set('stage', f.stage.join(','))
   if (f.market?.length) p.set('market', f.market.join(','))
   if (f.accountType?.length) p.set('accountType', f.accountType.join(','))
   if (f.verifiedOnly) p.set('verifiedOnly', 'true')
+  if (f.inPipeline) p.set('inPipeline', 'true')
+  if (f.notInPipeline) p.set('notInPipeline', 'true')
   if (f.minFollowers != null) p.set('minFollowers', String(f.minFollowers))
   if (f.maxFollowers != null) p.set('maxFollowers', String(f.maxFollowers))
   if (f.sort) p.set('sort', f.sort)
@@ -99,8 +101,8 @@ export function useOverview() {
 export function useFacets() {
   return useQuery({
     queryKey: ['facets'],
-    queryFn: () => get<{ niche: string[]; tier: string[]; market: string[]; account_type: string[] }>('/api/facets'),
-    staleTime: Infinity,
+    queryFn: () => get<{ niche: string[]; market: string[]; account_type: string[]; total: number }>('/api/facets'),
+    staleTime: 60_000,
   })
 }
 
@@ -125,8 +127,49 @@ export function useAddNote() {
   return useMutation({
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       send<{ note: Note }>(`/api/influencers/${id}/notes`, 'POST', { content }),
-    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['influencer', v.id] }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['influencer', v.id] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
+    },
   })
+}
+
+// ---- Pipeline membership + add-by-URL ---------------------------------------
+
+export function useAddToPipeline() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) => send<{ added: number }>('/api/pipeline/add', 'POST', { ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['influencers'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
+    },
+  })
+}
+
+export interface ProfilePreview {
+  handle: string; name: string; profile_url: string; follower_count: number | null; biography: string | null; fetched: boolean
+}
+export async function fetchProfile(url: string): Promise<ProfilePreview> {
+  return get<ProfilePreview>(`/api/fetch-profile?url=${encodeURIComponent(url)}`)
+}
+
+export function useAddByUrl() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { handle: string; name?: string | null; profile_url?: string | null; follower_count?: number | null; biography?: string | null; addToPipeline?: boolean }) =>
+      send<{ influencer: Influencer; created: boolean }>('/api/influencers/add', 'POST', input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['influencers'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
+    },
+  })
+}
+
+export async function logDm(influencer_id: string) {
+  try { await send('/api/activity', 'POST', { kind: 'dm', influencer_id }) } catch { /* non-critical */ }
 }
 
 export function useDeals(influencerId?: string) {

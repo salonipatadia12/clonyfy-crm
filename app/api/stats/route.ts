@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getStats } from '@/lib/db'
+import { getStats, getRevenueByMonth, getTopDeals } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  return NextResponse.json(getStats())
+  return NextResponse.json({
+    ...getStats(),
+    revenueByMonth: getRevenueByMonth(6),
+    topDeals: getTopDeals(6),
+  })
 }

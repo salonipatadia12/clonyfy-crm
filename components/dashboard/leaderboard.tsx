@@ -2,13 +2,13 @@
 
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/avatar'
-import { StageBadge, TierBadge } from '@/components/crm/badges'
-import { formatFollowers } from '@/lib/utils'
+import { StageBadge } from '@/components/crm/badges'
+import { formatFollowers, formatMoney } from '@/lib/utils'
 import type { LeaderboardRow } from '@/types/database'
 
 export function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
   if (!rows.length) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Move creators into the pipeline to see your top partners here.</p>
+    return <p className="py-8 text-center text-sm text-muted-foreground">Log a deal value on a creator to see your top commercial relationships here.</p>
   }
   return (
     <div className="space-y-1">
@@ -22,11 +22,10 @@ export function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
           <Avatar name={r.name} size={32} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{r.name}</p>
-            <p className="truncate text-xs text-muted-foreground">@{r.handle}</p>
+            <p className="truncate text-xs text-muted-foreground">@{r.handle} · {formatFollowers(r.follower_count)}</p>
           </div>
           <div className="hidden sm:block"><StageBadge stage={r.stage} /></div>
-          <TierBadge tier={r.quality_tier} />
-          <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums">{formatFollowers(r.follower_count)}</span>
+          <span className="w-16 shrink-0 text-right text-sm font-bold text-emerald-400 tabular-nums">{formatMoney(r.deal_total)}</span>
         </Link>
       ))}
     </div>

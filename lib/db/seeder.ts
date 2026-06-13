@@ -126,36 +126,39 @@ const ORDER = ['Prospecting', 'Contacted', 'Responded', 'Negotiating', 'Deal Clo
 const TITLES = ['Sponsored Reel', 'Product Launch Collab', 'Story Takeover', '3-Post Package', 'Brand Ambassador Q3', 'UGC Bundle', 'Giveaway Partnership']
 const VALUES = [800, 1200, 1500, 2200, 3000, 4500, 6000, 8500]
 const PLAN = [
-  { stage: 'Contacted', n: 22 }, { stage: 'Responded', n: 14 }, { stage: 'Negotiating', n: 9 },
-  { stage: 'Deal Closed', n: 7 }, { stage: 'Live', n: 5 }, { stage: 'Completed', n: 6 },
+  { stage: 'Prospecting', n: 34 }, { stage: 'Contacted', n: 22 }, { stage: 'Responded', n: 14 },
+  { stage: 'Negotiating', n: 9 }, { stage: 'Deal Closed', n: 7 }, { stage: 'Live', n: 5 }, { stage: 'Completed', n: 6 },
 ]
 
-// Reset CRM state, then walk a spread of creators through the funnel and log
-// deals (some won, some active), spread across ~28 days for a lively chart.
+// Reset CRM state, then add a spread of creators to the pipeline, walk them
+// through the funnel, log deals + reels, and write a real activity log —
+// spread across ~28 days for a lively dashboard.
 export function seedDemo(db: DatabaseSync): { deals: number; revenue: number } {
   const now = () => new Date().toISOString()
   const daysAgo = (d: number) => new Date(Date.now() - d * 864e5).toISOString()
 
   db.exec('BEGIN')
-  db.exec("UPDATE influencers SET stage = 'Prospecting'")
+  db.exec("UPDATE influencers SET stage = 'Prospecting', in_pipeline = 0")
   db.exec('DELETE FROM pipeline_entries')
   db.exec('DELETE FROM notes')
   db.exec('DELETE FROM collaborations')
+  db.exec('DELETE FROM activity_log')
   db.exec('COMMIT')
 
   const pool = db.prepare(
     `SELECT id, name FROM influencers
-     WHERE quality_tier IN ('A','B') AND engagement_rate > 0
-     ORDER BY (quality_tier='A') DESC, engagement_rate DESC LIMIT 90`
+     WHERE engagement_rate > 0
+     ORDER BY follower_count DESC LIMIT 130`
   ).all() as { id: string; name: string }[]
 
-  const setStage = db.prepare('UPDATE influencers SET stage = ?, updated_at = ? WHERE id = ?')
+  const setStage = db.prepare('UPDATE influencers SET stage = ?, in_pipeline = 1, updated_at = ? WHERE id = ?')
   const addEntry = db.prepare('INSERT INTO pipeline_entries (influencer_id, from_stage, to_stage, note, changed_at) VALUES (?,?,?,?,?)')
   const addNote = db.prepare('INSERT INTO notes (influencer_id, content, created_at) VALUES (?,?,?)')
   const addDeal = db.prepare(
-    `INSERT INTO collaborations (influencer_id, title, status, deal_value, currency, deliverables, notes, created_at)
-     VALUES (?,?,?,?,?,?,?,?)`
+    `INSERT INTO collaborations (influencer_id, title, status, deal_value, currency, deliverables, reel_url, reel_views, notes, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
   )
+  const addAct = db.prepare('INSERT INTO activity_log (kind, influencer_id, detail, value, created_at) VALUES (?,?,?,?,?)')
 
   let idx = 0, deals = 0, revenue = 0
   db.exec('BEGIN')
@@ -165,18 +168,28 @@ export function seedDemo(db: DatabaseSync): { deals: number; revenue: number } {
       const stageIdx = ORDER.indexOf(stage)
       const baseDay = 4 + ((idx * 13) % 24)
       setStage.run(stage, now(), c.id)
+      addAct.run('added', c.id, c.name, null, daysAgo(Math.min(29, baseDay + 1)))
       for (let s = 1; s <= stageIdx; s++) {
-        addEntry.run(c.id, ORDER[s - 1], ORDER[s], null, daysAgo(Math.max(0, baseDay - (stageIdx - s))))
+        const ts = daysAgo(Math.max(0, baseDay - (stageIdx - s)))
+        addEntry.run(c.id, ORDER[s - 1], ORDER[s], null, ts)
+        if (s === stageIdx) addAct.run('stage', c.id, ORDER[s], null, ts)
       }
       if (stage === 'Contacted' && i % 3 === 0) {
-        addNote.run(c.id, 'Sent intro DM — referenced their latest reel.', daysAgo(Math.max(0, baseDay - 1)))
+        const ts = daysAgo(Math.max(0, baseDay - 1))
+        addNote.run(c.id, 'Sent intro DM — referenced their latest reel.', ts)
+        addAct.run('dm', c.id, null, null, ts)
       }
       if (stageIdx >= ORDER.indexOf('Negotiating')) {
         const value = VALUES[(idx + stageIdx) % VALUES.length]
-        const status = stage === 'Completed' || stage === 'Live' ? 'completed' : 'active'
-        addDeal.run(c.id, TITLES[idx % TITLES.length], status, value, 'USD', JSON.stringify(['1 Reel', '2 Stories']), null, daysAgo(Math.max(0, baseDay - 1)))
+        const won = stage === 'Completed' || stage === 'Live'
+        const status = won ? 'completed' : 'active'
+        const ts = daysAgo(Math.max(0, baseDay - 1))
+        const reelUrl = won ? `https://www.instagram.com/reel/DEMO${idx}x/` : null
+        const reelViews = won ? value * (40 + (idx % 60)) : null
+        addDeal.run(c.id, TITLES[idx % TITLES.length], status, value, 'USD', JSON.stringify(['1 Reel', '2 Stories']), reelUrl, reelViews, null, ts)
+        addAct.run(won ? 'closed' : 'deal', c.id, TITLES[idx % TITLES.length], value, ts)
         deals++
-        if (status === 'completed') revenue += value
+        if (won) revenue += value
       }
     }
   }

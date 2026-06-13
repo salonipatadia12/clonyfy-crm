@@ -21,15 +21,17 @@ CREATE TABLE IF NOT EXISTS influencers (
   country_seed    TEXT,
   is_verified     INTEGER NOT NULL DEFAULT 0,
   is_private      INTEGER NOT NULL DEFAULT 0,
-  quality_tier    TEXT,                        -- A|B|C
+  quality_tier    TEXT,                        -- A|B|C (legacy; no longer surfaced in UI)
   bio_link        TEXT,
   biography       TEXT,
   email           TEXT,
   profile_url     TEXT,
   avatar_url      TEXT,
   -- CRM relationship state (preserved across re-seeds) --
+  in_pipeline     INTEGER NOT NULL DEFAULT 0,   -- 0 = discovery pool, 1 = working pipeline
   stage           TEXT NOT NULL DEFAULT 'Prospecting',
   priority        TEXT NOT NULL DEFAULT 'low',
+  added_via       TEXT,                          -- 'scrape' | 'url'
   scraped_at      TEXT,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL
@@ -66,9 +68,22 @@ CREATE TABLE IF NOT EXISTS collaborations (
   start_date    TEXT,
   end_date      TEXT,
   deliverables  TEXT,                              -- JSON array
+  reel_url      TEXT,                              -- live campaign reel link
+  reel_views    INTEGER,                           -- manually entered views
   notes         TEXT,
   created_at    TEXT NOT NULL
 );
+
+-- In-app action log powering the Live Activity feed (real user actions only).
+CREATE TABLE IF NOT EXISTS activity_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind          TEXT NOT NULL,                     -- added|stage|deal|closed|note|dm
+  influencer_id TEXT,
+  detail        TEXT,
+  value         REAL,
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_collab_influencer ON collaborations(influencer_id);
 CREATE INDEX IF NOT EXISTS idx_collab_status     ON collaborations(status);
 

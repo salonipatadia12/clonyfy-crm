@@ -20,11 +20,12 @@ export async function GET(req: NextRequest) {
   const params: ListParams = {
     search: sp.get('search') || undefined,
     niche: arr(sp.get('niche')),
-    tier: arr(sp.get('tier')),
     stage: arr(sp.get('stage')),
     market: arr(sp.get('market')),
     accountType: arr(sp.get('accountType')),
     verifiedOnly: sp.get('verifiedOnly') === 'true',
+    inPipeline: sp.get('inPipeline') === 'true' || undefined,
+    notInPipeline: sp.get('notInPipeline') === 'true' || undefined,
     minFollowers: num(sp.get('minFollowers')),
     maxFollowers: num(sp.get('maxFollowers')),
     sort: sp.get('sort') || undefined,

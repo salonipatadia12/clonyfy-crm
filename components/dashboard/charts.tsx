@@ -2,11 +2,15 @@
 
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid,
-  BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, BarChart, Bar,
 } from 'recharts'
-import { NICHE_HEX, TIER_HEX, nicheLabel, formatFollowers } from '@/lib/utils'
-import type { StatsResponse } from '@/types/database'
+import { NICHE_HEX, nicheLabel, formatFollowers, formatMoney } from '@/lib/utils'
+import type { StatsResponse, RevenueMonth } from '@/types/database'
+
+const monthLabel = (m: string) => {
+  const [, mm] = m.split('-')
+  return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(mm) - 1] ?? m
+}
 
 const tooltipStyle = {
   background: 'hsl(240 14% 6%)',
@@ -30,32 +34,23 @@ export function NicheDonut({ data }: { data: StatsResponse['byNiche'] }) {
   )
 }
 
-export function EngagementScatter({ data }: { data: StatsResponse['scatter'] }) {
-  const byTier: Record<string, typeof data> = { A: [], B: [], C: [] }
-  data.forEach(d => { (byTier[d.tier] ?? byTier.C).push(d) })
+export function RevenueMonthChart({ data }: { data: RevenueMonth[] }) {
+  const rows = data.map(d => ({ name: monthLabel(d.month), revenue: d.revenue }))
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <ScatterChart margin={{ top: 10, right: 12, bottom: 4, left: -8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 8% 16%)" />
-        <XAxis
-          type="number" dataKey="x" name="Followers" scale="log" domain={['auto', 'auto']}
-          tickFormatter={(v) => formatFollowers(v)} tick={{ fill: 'hsl(240 6% 60%)', fontSize: 11 }}
-          stroke="hsl(240 8% 20%)"
-        />
-        <YAxis
-          type="number" dataKey="y" name="Engagement" unit="%"
-          tick={{ fill: 'hsl(240 6% 60%)', fontSize: 11 }} stroke="hsl(240 8% 20%)"
-        />
-        <ZAxis range={[28, 28]} />
-        <Tooltip
-          cursor={{ strokeDasharray: '3 3', stroke: 'hsl(263 85% 67%)' }}
-          contentStyle={tooltipStyle} itemStyle={{ color: '#fff' }}
-          formatter={(v: number, n: string) => n === 'Followers' ? formatFollowers(v) : `${v}%`}
-        />
-        {(['C', 'B', 'A'] as const).map(t => (
-          <Scatter key={t} name={`Tier ${t}`} data={byTier[t]} fill={TIER_HEX[t]} fillOpacity={t === 'A' ? 0.95 : 0.5} />
-        ))}
-      </ScatterChart>
+    <ResponsiveContainer width="100%" height={260}>
+      <BarChart data={rows} margin={{ top: 10, right: 12, bottom: 4, left: -4 }}>
+        <defs>
+          <linearGradient id="revBar" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#34d399" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="#10b981" stopOpacity={0.5} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 8% 16%)" vertical={false} />
+        <XAxis dataKey="name" tick={{ fill: 'hsl(240 6% 60%)', fontSize: 11 }} stroke="hsl(240 8% 20%)" />
+        <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fill: 'hsl(240 6% 60%)', fontSize: 11 }} stroke="hsl(240 8% 20%)" width={48} />
+        <Tooltip cursor={{ fill: 'hsl(160 80% 45% / 0.08)' }} contentStyle={tooltipStyle} itemStyle={{ color: '#fff' }} formatter={(v: number) => [formatMoney(v), 'Revenue won']} />
+        <Bar dataKey="revenue" fill="url(#revBar)" radius={[6, 6, 0, 0]} maxBarSize={48} isAnimationActive animationDuration={900} />
+      </BarChart>
     </ResponsiveContainer>
   )
 }

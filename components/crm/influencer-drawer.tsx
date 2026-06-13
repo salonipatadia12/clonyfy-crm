@@ -7,15 +7,21 @@ import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { TierBadge, PriorityBadge, NicheChip, EngQuality, VerifiedTick } from '@/components/crm/badges'
+import { NicheChip, VerifiedTick } from '@/components/crm/badges'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  useInfluencer, useUpdateInfluencer, useAddNote, useAddDeal, useUpdateDeal,
+  useInfluencer, useUpdateInfluencer, useAddNote, useAddDeal, useUpdateDeal, logDm,
 } from '@/lib/api'
 import { STAGES, formatFollowers, formatNum, formatMoney, nicheLabel, safeUrl } from '@/lib/utils'
-import { ExternalLink, AtSign, Link2, Plus, StickyNote, Handshake, History, Mail } from 'lucide-react'
+import { ExternalLink, Send, Link2, Plus, StickyNote, Handshake, History, Mail, Copy, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
+
+const DM_TEMPLATES = [
+  { name: 'Intro', text: "Hey {name}! Love your content — we're working with creators in your space and think you'd be a great fit. Open to a quick collab chat?" },
+  { name: 'Follow-up', text: "Hi {name}, circling back on my last message — would love to share what we have in mind. Got 2 minutes this week?" },
+  { name: 'Offer', text: "Hi {name}! We'd love to partner on a paid post. Can you share your rates for a reel + story bundle?" },
+]
 
 export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId: string | null; onOpenChange: (open: boolean) => void }) {
   const { data, isLoading } = useInfluencer(influencerId)
@@ -47,18 +53,17 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
                   </div>
                   <p className="text-sm text-muted-foreground">@{inf.handle}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <TierBadge tier={inf.quality_tier} />
-                    <PriorityBadge priority={inf.priority} />
                     <NicheChip niche={inf.niche} />
-                    <EngQuality value={inf.eng_quality} />
+                    {inf.market && <span className="text-xs uppercase text-muted-foreground">{inf.market}</span>}
                   </div>
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {profileUrl && (
-                  <a href={profileUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-xs font-medium hover:border-primary/40">
-                    <AtSign className="h-3.5 w-3.5" /> Profile <ExternalLink className="h-3 w-3 opacity-60" />
+                  <a href={profileUrl} target="_blank" rel="noreferrer noopener" onClick={() => logDm(inf.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                    <Send className="h-3.5 w-3.5" /> Open / DM <ExternalLink className="h-3 w-3 opacity-70" />
                   </a>
                 )}
                 {bioUrl && (
@@ -71,6 +76,7 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
                     <Mail className="h-3.5 w-3.5" /> Email
                   </a>
                 )}
+                <TemplateButton name={inf.name} />
               </div>
 
               <div className="mt-4 flex items-center gap-2">
@@ -102,11 +108,13 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
                 <TabsContent value="overview">
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <Metric label="Followers" value={formatFollowers(inf.follower_count)} />
-                    <Metric label="Engagement" value={inf.engagement_rate != null ? `${inf.engagement_rate}%` : '—'} />
-                    <Metric label="Avg Likes" value={formatNum(inf.avg_likes)} />
                     <Metric label="Following" value={formatNum(inf.following_count)} />
                     <Metric label="Posts" value={formatNum(inf.posts_count)} />
-                    <Metric label="Account" value={inf.account_type ? inf.account_type : '—'} />
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3 text-sm">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Last touch</span>
+                    <span className="ml-auto font-medium">{lastTouch(data)}</span>
                   </div>
                   {inf.biography && (
                     <div className="mt-4 rounded-xl border border-border/60 bg-card/40 p-4">
@@ -155,6 +163,41 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="font-medium capitalize">{value || '—'}</dd>
+    </div>
+  )
+}
+
+function lastTouch(data: NonNullable<ReturnType<typeof useInfluencer>['data']>): string {
+  const ts = [
+    ...data.pipeline.map(p => p.changed_at),
+    ...data.notes.map(n => n.created_at),
+    ...data.deals.map(d => d.created_at),
+  ].sort().pop()
+  return ts ? formatDistanceToNow(new Date(ts), { addSuffix: true }) : 'No activity yet'
+}
+
+function TemplateButton({ name }: { name: string }) {
+  const [open, setOpen] = useState(false)
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text.replace(/\{name\}/g, name.split(' ')[0] || name))
+    toast.success('Template copied')
+    setOpen(false)
+  }
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-xs font-medium hover:border-primary/40">
+        <Copy className="h-3.5 w-3.5" /> Use template
+      </button>
+      {open && (
+        <div className="absolute left-0 z-10 mt-1 w-64 rounded-xl border border-border bg-popover p-1 shadow-xl">
+          {DM_TEMPLATES.map(t => (
+            <button key={t.name} onClick={() => copy(t.text)} className="block w-full rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted">
+              <span className="font-medium">{t.name}</span>
+              <span className="mt-0.5 block truncate text-muted-foreground">{t.text}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -237,27 +280,44 @@ function DealsTab({ influencerId, deals }: { influencerId: string; deals: any[] 
         <Empty icon={Handshake} text="No deals yet. Log a collaboration to track revenue." />
       ) : (
         <div className="space-y-2">
-          {deals.map(d => (
-            <div key={d.id} className="rounded-xl border border-border/60 bg-card/40 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{d.title}</p>
-                <p className="text-sm font-bold text-emerald-400">{formatMoney(d.deal_value, d.currency)}</p>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <Select
-                  value={d.status}
-                  onChange={(e) => updateDeal.mutate({ id: d.id, patch: { status: e.target.value } }, { onSuccess: () => toast.success('Deal updated') })}
-                  className="h-7 w-32 text-xs"
-                >
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </Select>
-                <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}</span>
-              </div>
-            </div>
-          ))}
+          {deals.map(d => <DealItem key={d.id} deal={d} updateDeal={updateDeal} />)}
         </div>
+      )}
+    </div>
+  )
+}
+
+function DealItem({ deal, updateDeal }: { deal: any; updateDeal: ReturnType<typeof useUpdateDeal> }) {
+  const [reel, setReel] = useState(deal.reel_url ?? '')
+  const [views, setViews] = useState(deal.reel_views != null ? String(deal.reel_views) : '')
+  const saveReel = () => {
+    updateDeal.mutate({ id: deal.id, patch: { reel_url: reel || null, reel_views: views ? Number(views) : null } },
+      { onSuccess: () => toast.success('Reel saved') })
+  }
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">{deal.title}</p>
+        <p className="text-sm font-bold text-emerald-400">{formatMoney(deal.deal_value, deal.currency)}</p>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Select
+          value={deal.status}
+          onChange={(e) => updateDeal.mutate({ id: deal.id, patch: { status: e.target.value } }, { onSuccess: () => toast.success('Deal updated') })}
+          className="h-7 w-32 text-xs"
+        >
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </Select>
+        <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(deal.created_at), { addSuffix: true })}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+        <Input value={reel} onChange={(e) => setReel(e.target.value)} placeholder="Reel URL (when live)" className="h-8 text-xs" />
+        <Input value={views} onChange={(e) => setViews(e.target.value)} placeholder="Views" type="number" className="h-8 w-24 text-xs" />
+      </div>
+      {(reel !== (deal.reel_url ?? '') || views !== (deal.reel_views != null ? String(deal.reel_views) : '')) && (
+        <Button size="sm" onClick={saveReel} className="mt-2 h-7 text-xs">Save reel</Button>
       )}
     </div>
   )

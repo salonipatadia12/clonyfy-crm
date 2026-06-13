@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
-  Globe, Trophy, Handshake, DollarSign, Target, ArrowUpRight, Activity, Zap, Radio,
+  Globe, Users, Handshake, DollarSign, Target, ArrowUpRight, Activity, Zap, Radio,
 } from 'lucide-react'
 import { useOverview } from '@/lib/api'
 import { KpiCard } from '@/components/dashboard/kpi-card'
@@ -34,8 +34,8 @@ export default function DashboardPage() {
           </div>
           <h1 className="mt-1 text-3xl font-bold tracking-tight md:text-4xl"><span className="gradient-text">Command Center</span></h1>
           <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
-            {data.totals.total.toLocaleString()} creators · {formatFollowers(data.totals.reach)} combined reach ·
-            tracking {data.worked.toLocaleString()} through your pipeline.
+            {data.totals.total.toLocaleString()} profiles · {formatFollowers(data.totals.reach)} combined audience ·
+            {' '}{data.totals.inPipeline.toLocaleString()} working through your pipeline.
           </p>
         </div>
         <Link href="/crm/influencers" className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-4 py-2 text-sm font-medium transition-colors hover:border-primary/40">
@@ -45,11 +45,11 @@ export default function DashboardPage() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <KpiCard id="reach" index={0} label="Total Reach" value={data.totals.reach} icon={Globe} accent="violet" format={formatFollowers} sub={`across ${data.totals.total.toLocaleString()} creators`} />
-        <KpiCard id="tierA" index={1} label="Tier-A Creators" value={data.totals.tierA} icon={Trophy} accent="emerald" sub="highest-value targets" />
+        <KpiCard id="profiles" index={0} label="Total Profiles" value={data.totals.total} icon={Users} accent="violet" sub="in your influencers list" />
+        <KpiCard id="reach" index={1} label="Combined Audience" value={data.totals.reach} icon={Globe} accent="cyan" format={formatFollowers} sub="sum of follower counts" />
         <KpiCard id="deals" index={2} label="Active Deals" value={data.totals.activeDeals} icon={Handshake} accent="amber" sub={`${data.deltas.newDeals7} new this week`} spark={actSpark} />
-        <KpiCard id="rev" index={3} label="Revenue Won" value={data.deals.revenue_won} icon={DollarSign} accent="cyan" format={(n) => formatMoney(n)} sub={`+${formatMoney(data.deltas.revenue7)} this week`} spark={revSpark} />
-        <KpiCard id="conv" index={4} label="Conversion" value={data.conversion} icon={Target} accent="rose" format={(n) => `${n.toFixed(1)}%`} sub="worked → closed" />
+        <KpiCard id="rev" index={3} label="Revenue Won" value={data.deals.revenue_won} icon={DollarSign} accent="emerald" format={(n) => formatMoney(n)} sub={`+${formatMoney(data.deltas.revenue7)} this week`} spark={revSpark} />
+        <KpiCard id="close" index={4} label="Close Rate" value={data.closeRate} icon={Target} accent="rose" format={(n) => `${n.toFixed(1)}%`} sub="contacted → closed" />
       </div>
 
       {/* Bento: momentum + live feed */}
@@ -93,7 +93,7 @@ export default function DashboardPage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">Outreach Funnel</h2>
-              <p className="text-sm text-muted-foreground">Creators by stage</p>
+              <p className="text-sm text-muted-foreground">Creators in your pipeline by stage</p>
             </div>
             <Link href="/crm/pipeline" className="text-sm text-primary hover:underline">Open board</Link>
           </div>
@@ -105,6 +105,7 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold">Top Partners</h2>
             <Link href="/crm/deals" className="text-sm text-primary hover:underline">Deals</Link>
           </div>
+          <p className="-mt-2 mb-2 text-xs text-muted-foreground">By total deal value</p>
           <Leaderboard rows={data.leaderboard} />
         </Tile>
 

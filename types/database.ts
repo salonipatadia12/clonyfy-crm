@@ -27,8 +27,10 @@ export interface Influencer {
   email: string | null
   profile_url: string | null
   avatar_url: string | null
+  in_pipeline: number
   stage: Stage
   priority: Priority
+  added_via: string | null
   scraped_at: string | null
   created_at: string
   updated_at: string
@@ -62,10 +64,13 @@ export interface Collaboration {
   start_date: string | null
   end_date: string | null
   deliverables: string | null
+  reel_url: string | null
+  reel_views: number | null
   notes: string | null
   created_at: string
 }
 
+// Saved Lists (stored filter combinations) — kept on the `segments` table.
 export interface Segment {
   id: number
   name: string
@@ -73,23 +78,34 @@ export interface Segment {
   created_at: string
 }
 
+export interface RevenueMonth { month: string; revenue: number; deals: number }
+export interface TopDeal {
+  id: number
+  title: string
+  deal_value: number | null
+  status: string
+  reel_views: number | null
+  influencer_name: string
+  influencer_handle: string
+}
+
 export interface StatsResponse {
-  totals: { total: number; reach: number; avg_eng: number; tierA: number; activeDeals: number; closedCount: number }
+  totals: { total: number; reach: number; inPipeline: number; activeDeals: number; videos: number }
+  closeRate: number
   byStage: { stage: Stage; count: number; reach: number }[]
-  byTier: { tier: Tier; count: number }[]
   byNiche: { niche: string; count: number; reach: number }[]
-  byEng: { eng_quality: string; count: number }[]
-  deals: { deal_count: number; total_value: number; revenue_won: number; pipeline_value: number }
-  scatter: { handle: string; x: number; y: number; tier: Tier }[]
+  deals: { deal_count: number; total_value: number; revenue_won: number; pipeline_value: number; active_count: number; videos: number }
+  revenueByMonth?: RevenueMonth[]
+  topDeals?: TopDeal[]
 }
 
 export interface ActivityEvent {
-  kind: 'stage' | 'deal' | 'note'
+  kind: 'added' | 'stage' | 'deal' | 'closed' | 'note' | 'dm'
   ts: string
-  detail: string
-  extra: string | null
-  name: string
-  handle: string
+  detail: string | null
+  value: number | null
+  name: string | null
+  handle: string | null
 }
 
 export interface LeaderboardRow {
@@ -97,15 +113,12 @@ export interface LeaderboardRow {
   handle: string
   name: string
   follower_count: number | null
-  engagement_rate: number | null
-  quality_tier: Tier | null
   stage: Stage
+  deal_total: number
 }
 
 export interface OverviewResponse extends StatsResponse {
   series: { date: string; activity: number; dealValue: number; revenue: number }[]
-  conversion: number
-  worked: number
   deltas: { activity: number; activity7: number; newDeals7: number; revenue7: number }
   leaderboard: LeaderboardRow[]
   feed: ActivityEvent[]
