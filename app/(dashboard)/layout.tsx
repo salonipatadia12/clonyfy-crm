@@ -1,22 +1,18 @@
-'use client'
+import { redirect } from 'next/navigation'
+import { getProfile } from '@/lib/auth'
+import { AuthProvider } from '@/lib/auth-context'
+import { AppShell } from '@/components/layout/app-shell'
 
-import { Sidebar } from '@/components/layout/sidebar'
-import { MobileHeader } from '@/components/layout/mobile-header'
-import { Toaster } from '@/components/ui/toaster'
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const session = await getProfile()
+  // Middleware already bounces unauthenticated users to /login; this also
+  // covers a signed-up user who hasn't created their workspace yet.
+  if (!session) redirect('/login')
+  if (!session.profile) redirect('/onboarding')
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
   return (
-    <div className="app-canvas min-h-screen">
-      <Sidebar />
-      <div className="md:ml-64">
-        <MobileHeader />
-        <main className="mx-auto max-w-[1500px] p-5 md:p-8">{children}</main>
-      </div>
-      <Toaster />
-    </div>
+    <AuthProvider profile={session.profile}>
+      <AppShell>{children}</AppShell>
+    </AuthProvider>
   )
 }

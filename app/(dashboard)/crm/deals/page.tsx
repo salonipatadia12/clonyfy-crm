@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Handshake, TrendingUp, Clock, Trophy, Search, Plus, Film, ArrowUp, ArrowDown } from 'lucide-react'
-import { useDeals, useStats } from '@/lib/api'
+import { Handshake, Film, TrendingUp, Clock, Search, Plus, ArrowUp, ArrowDown } from 'lucide-react'
+import { useDeals } from '@/lib/api'
+import { useAuth, useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -11,9 +12,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { NewDealModal } from '@/components/crm/new-deal-modal'
 import { DealDrawer } from '@/components/crm/deal-drawer'
-import { formatMoney, cn } from '@/lib/utils'
+import { formatNum, cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
-import type { Collaboration } from '@/types/database'
+import type { Deal } from '@/types/database'
 
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
@@ -23,48 +24,58 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function DealsPage() {
   const { data, isLoading } = useDeals()
-  const { data: stats } = useStats()
+  const me = useAuth()
+  const isAdmin = useIsAdmin()
   const [filter, setFilter] = useState('')
+  const [ownerFilter, setOwnerFilter] = useState('')   // '', 'mine', or a creator id
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<'deal_value' | 'created_at' | 'status'>('deal_value')
+  const [sort, setSort] = useState<'created_at' | 'total_views' | 'status'>('created_at')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [newOpen, setNewOpen] = useState(false)
-  const [openDeal, setOpenDeal] = useState<Collaboration | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const creators = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const d of data?.deals ?? []) if (d.created_by && d.created_by_name) seen.set(d.created_by, d.created_by_name)
+    return [...seen.entries()].map(([id, name]) => ({ id, name }))
+  }, [data])
 
   const deals = useMemo(() => {
-    let rows = (data?.deals ?? []) as Collaboration[]
+    let rows = (data?.deals ?? []) as Deal[]
     if (filter) rows = rows.filter(d => d.status === filter)
+    if (ownerFilter === 'mine') rows = rows.filter(d => d.created_by === me.id)
+    else if (ownerFilter) rows = rows.filter(d => d.created_by === ownerFilter)
     if (search) {
       const q = search.toLowerCase()
-      rows = rows.filter(d => d.title.toLowerCase().includes(q) || (d.influencer_name ?? '').toLowerCase().includes(q) || (d.influencer_handle ?? '').toLowerCase().includes(q))
+      rows = rows.filter(d => d.title.toLowerCase().includes(q) || (d.influencer_name ?? '').toLowerCase().includes(q) || d.handle.toLowerCase().includes(q))
     }
     const dir = order === 'asc' ? 1 : -1
     return [...rows].sort((a, b) => {
-      if (sort === 'deal_value') return ((a.deal_value ?? 0) - (b.deal_value ?? 0)) * dir
+      if (sort === 'total_views') return (a.total_views - b.total_views) * dir
       if (sort === 'status') return a.status.localeCompare(b.status) * dir
       return (a.created_at < b.created_at ? -1 : 1) * dir
     })
-  }, [data, filter, search, sort, order])
+  }, [data, filter, ownerFilter, me.id, search, sort, order])
 
-  const d = stats?.deals
+  const s = data?.stats
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3 animate-fade-up">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Deals</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Every collaboration you&apos;ve logged with a creator.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Creators who agreed to collaborate — tracked by the videos they deliver.</p>
         </div>
         <Button onClick={() => setNewOpen(true)}><Plus className="mr-1 h-4 w-4" /> New deal</Button>
       </header>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {d ? (
+        {s ? (
           <>
-            <KpiCard id="rev" index={0} label="Revenue Won" value={d.revenue_won} format={(n) => formatMoney(n)} sub="completed deals" icon={Trophy} accent="emerald" />
-            <KpiCard id="pipe" index={1} label="In Pipeline" value={d.pipeline_value} format={(n) => formatMoney(n)} sub="active deal value" icon={Clock} accent="amber" />
-            <KpiCard id="total" index={2} label="Total Logged" value={d.total_value} format={(n) => formatMoney(n)} sub="all statuses" icon={TrendingUp} accent="violet" />
-            <KpiCard id="videos" index={3} label="Videos Generated" value={d.videos} sub="deals with a reel" icon={Film} accent="cyan" />
+            <KpiCard id="total" index={0} label="Total Deals" value={s.total} sub={`${s.active} active`} icon={Handshake} accent="violet" />
+            <KpiCard id="active" index={1} label="Active" value={s.active} sub={`${s.completed} completed`} icon={Clock} accent="amber" />
+            <KpiCard id="videos" index={2} label="Videos Posted" value={s.videosPosted} sub={`of ${s.videosPlanned} planned`} icon={Film} accent="cyan" />
+            <KpiCard id="views" index={3} label="Total Views" value={s.totalViews} format={(n) => formatNum(n)} sub="across all videos" icon={TrendingUp} accent="emerald" />
           </>
         ) : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
       </div>
@@ -81,9 +92,14 @@ export default function DealsPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </Select>
+          <Select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="w-40">
+            <option value="">All creators</option>
+            <option value="mine">Created by me</option>
+            {isAdmin && creators.filter(c => c.id !== me.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
           <Select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="w-36">
-            <option value="deal_value">Value</option>
             <option value="created_at">Created</option>
+            <option value="total_views">Views</option>
             <option value="status">Status</option>
           </Select>
           <Button variant="ghost" size="sm" onClick={() => setOrder(o => o === 'desc' ? 'asc' : 'desc')} className="border border-border">
@@ -97,39 +113,40 @@ export default function DealsPage() {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Handshake className="mb-3 h-9 w-9 text-muted-foreground/50" />
             <p className="text-sm font-medium">No deals yet</p>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Click <span className="text-foreground">+ New deal</span> or open a creator and add one to start tracking revenue.</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Click <span className="text-foreground">+ New deal</span>, or open a creator in your pipeline and start a deal once they agree.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="px-4 py-3">Creator</th>
                   <th className="px-3 py-3">Deal</th>
-                  <th className="px-3 py-3 text-right">Value</th>
+                  <th className="px-3 py-3">Created by</th>
+                  <th className="px-3 py-3 text-center">Videos</th>
+                  <th className="px-3 py-3 text-right">Views</th>
                   <th className="px-3 py-3">Status</th>
                   <th className="px-3 py-3">Created</th>
                 </tr>
               </thead>
               <tbody>
                 {deals.map(deal => (
-                  <tr key={deal.id} onClick={() => setOpenDeal(deal)} className="cursor-pointer border-b border-border/40 hover:bg-muted/30">
+                  <tr key={deal.id} onClick={() => setOpenId(deal.id)} className="cursor-pointer border-b border-border/40 hover:bg-muted/30">
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={deal.influencer_name || deal.influencer_handle || '?'} size={32} />
+                        <Avatar name={deal.influencer_name || deal.handle} size={32} />
                         <div className="min-w-0">
-                          <p className="truncate font-medium">{deal.influencer_name}</p>
-                          <p className="text-xs text-muted-foreground">@{deal.influencer_handle}</p>
+                          <p className="truncate font-medium">{deal.influencer_name || deal.handle}</p>
+                          <p className="text-xs text-muted-foreground">@{deal.handle}{deal.owner_name ? ` · ${deal.owner_name}` : ''}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex items-center gap-1.5">
-                        {deal.reel_url && <Film className="h-3.5 w-3.5 text-cyan-400" aria-label="has reel" />}
-                        {deal.title}
-                      </span>
+                    <td className="px-3 py-2.5">{deal.title}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{deal.created_by === me.id ? 'You' : (deal.created_by_name || '—')}</td>
+                    <td className="px-3 py-2.5 text-center tabular-nums">
+                      <span className="inline-flex items-center gap-1"><Film className="h-3.5 w-3.5 text-cyan-400" /> {deal.videos_posted}/{deal.videos_planned}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-emerald-400">{formatMoney(deal.deal_value, deal.currency)}</td>
+                    <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatNum(deal.total_views)}</td>
                     <td className="px-3 py-2.5">
                       <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium capitalize', STATUS_STYLE[deal.status])}>{deal.status}</span>
                     </td>
@@ -142,8 +159,8 @@ export default function DealsPage() {
         )}
       </div>
 
-      <NewDealModal open={newOpen} onOpenChange={setNewOpen} />
-      <DealDrawer deal={openDeal} onOpenChange={(o) => !o && setOpenDeal(null)} />
+      <NewDealModal open={newOpen} onOpenChange={setNewOpen} onCreated={(id) => setOpenId(id)} />
+      <DealDrawer dealId={openId} onOpenChange={(o) => !o && setOpenId(null)} />
     </div>
   )
 }

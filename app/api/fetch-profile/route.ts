@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCtx } from '@/lib/data'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,9 @@ function handleFromUrl(input: string): string | null {
 // Best-effort public profile preview. Instagram frequently blocks server-side
 // requests, so this gracefully degrades to just the handle when it can't read.
 export async function GET(req: NextRequest) {
+  const ctx = await requireCtx()
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (ctx.profile.role !== 'admin') return NextResponse.json({ error: 'admin only' }, { status: 403 })
   const url = req.nextUrl.searchParams.get('url') || req.nextUrl.searchParams.get('handle') || ''
   const handle = handleFromUrl(url)
   if (!handle) return NextResponse.json({ error: 'Enter a valid Instagram handle or URL' }, { status: 400 })

@@ -1,69 +1,62 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { Stage, Platform, Tier, Priority } from '@/types/database'
+import type { Stage } from '@/types/database'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 export const STAGES: Stage[] = [
-  'Prospecting','Contacted','Responded','Negotiating',
-  'Deal Closed','Live','Completed','Archived'
+  'prospecting','contacted','responded','negotiating',
+  'closed','live','completed','archived',
 ]
 
-export const STAGE_COLORS: Record<Stage, string> = {
-  'Prospecting': 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  'Contacted':   'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  'Responded':   'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  'Negotiating': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  'Deal Closed': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'Live':        'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-  'Completed':   'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  'Archived':    'bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500',
+export const STAGE_LABELS: Record<Stage, string> = {
+  prospecting: 'Prospecting',
+  contacted:   'Contacted',
+  responded:   'Responded',
+  negotiating: 'Negotiating',
+  closed:      'Closed',
+  live:        'Live',
+  completed:   'Completed',
+  archived:    'Archived',
 }
+export const stageLabel = (s: Stage | null | undefined) => (s ? STAGE_LABELS[s] ?? s : '—')
 
-export const PLATFORM_COLORS: Record<Platform, string> = {
-  instagram: '#E1306C',
-  tiktok:    '#69C9D0',
-  youtube:   '#FF0000',
-  twitter:   '#1DA1F2',
-  linkedin:  '#0A66C2',
+export const STAGE_COLORS: Record<Stage, string> = {
+  prospecting: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  contacted:   'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  responded:   'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  negotiating: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  closed:      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  live:        'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+  completed:   'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  archived:    'bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500',
 }
 
 // Hex accents per stage — used for the pipeline rail + funnel chart.
 export const STAGE_HEX: Record<Stage, string> = {
-  'Prospecting': '#94a3b8',
-  'Contacted':   '#3b82f6',
-  'Responded':   '#8b5cf6',
-  'Negotiating': '#f59e0b',
-  'Deal Closed': '#10b981',
-  'Live':        '#06b6d4',
-  'Completed':   '#22c55e',
-  'Archived':    '#64748b',
+  prospecting: '#94a3b8',
+  contacted:   '#3b82f6',
+  responded:   '#8b5cf6',
+  negotiating: '#f59e0b',
+  closed:      '#10b981',
+  live:        '#06b6d4',
+  completed:   '#22c55e',
+  archived:    '#64748b',
 }
 
-export const TIER_STYLES: Record<Tier, string> = {
-  A: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-  B: 'bg-sky-500/15 text-sky-400 border border-sky-500/30',
-  C: 'bg-slate-500/15 text-slate-400 border border-slate-500/30',
-}
+// "Past-contacted" stages — used for niche performance + team metrics (spec §9).
+export const ADVANCED_STAGES: Stage[] = ['responded', 'negotiating', 'closed', 'live', 'completed']
 
-export const TIER_HEX: Record<Tier, string> = { A: '#10b981', B: '#0ea5e9', C: '#64748b' }
-
-export const ENG_STYLES: Record<string, string> = {
-  high:          'text-emerald-400',
-  good:          'text-green-400',
-  ok:            'text-amber-400',
-  low:           'text-slate-400',
-  viral_outlier: 'text-fuchsia-400',
-  anomalous:     'text-rose-400',
-}
-
-export const PRIORITY_STYLES: Record<Priority, string> = {
-  high:   'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-  medium: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
-  low:    'bg-slate-500/15 text-slate-400 border border-slate-500/30',
-}
+export const FOLLOWER_BUCKETS = [
+  { key: '', label: 'All sizes', min: undefined, max: undefined },
+  { key: '<1K', label: '< 1K', min: 0, max: 1000 },
+  { key: '1K-10K', label: '1K – 10K', min: 1000, max: 10000 },
+  { key: '10K-50K', label: '10K – 50K', min: 10000, max: 50000 },
+  { key: '50K-100K', label: '50K – 100K', min: 50000, max: 100000 },
+  { key: '100K-500K', label: '100K – 500K', min: 100000, max: 500000 },
+] as const
 
 export const NICHE_LABELS: Record<string, string> = {
   web_dev: 'Web Dev',

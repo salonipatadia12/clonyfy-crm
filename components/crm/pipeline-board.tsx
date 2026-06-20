@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, closestCorners, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core'
-import { useInfluencers, useUpdateInfluencer, useDeals } from '@/lib/api'
+import { usePipeline, useUpdatePipeline, useReassign, useMembers } from '@/lib/api'
+import { useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -13,49 +15,75 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VerifiedTick } from '@/components/crm/badges'
 import { InfluencerDrawer } from '@/components/crm/influencer-drawer'
-import { NewDealModal } from '@/components/crm/new-deal-modal'
-import { STAGES, STAGE_HEX, STAGE_COLORS, formatFollowers, formatMoney, nicheLabel, safeUrl, cn } from '@/lib/utils'
-import type { Influencer, Stage } from '@/types/database'
-import { Search, ExternalLink, Plus, LayoutGrid, List } from 'lucide-react'
+import { STAGES, STAGE_HEX, STAGE_COLORS, ADVANCED_STAGES, stageLabel, formatFollowers, nicheLabel, safeUrl, cn } from '@/lib/utils'
+import type { PipelineRow, Stage } from '@/types/database'
+import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COLUMN_CAP = 60
+const STALE_DAYS = 7
+const STALE_STAGES: Stage[] = ['contacted', 'responded', 'negotiating']
+
+function isStale(r: PipelineRow): boolean {
+  if (!STALE_STAGES.includes(r.stage) || !r.last_touch) return false
+  return Date.now() - new Date(r.last_touch).getTime() > STALE_DAYS * 864e5
+}
 
 export function PipelineBoard() {
-  const { data, isLoading } = useInfluencers({ inPipeline: true, sort: 'updated_at', order: 'desc', pageSize: 500 })
-  const { data: dealData } = useDeals()
-  const updateInf = useUpdateInfluencer()
+  return <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-2xl" />}><PipelineBoardInner /></Suspense>
+}
+
+function PipelineBoardInner() {
+  const params = useSearchParams()
+  // Cross-screen nav (spec §13): /pipeline?stage=&country=&assignedTo= filter server-side.
+  const urlFilters = {
+    stage: (params.get('stage') as Stage) || undefined,
+    country: params.get('country') || undefined,
+    assignedTo: params.get('assignedTo') || undefined,
+  }
+  const { data, isLoading } = usePipeline(urlFilters)
+  const updatePipe = useUpdatePipeline()
+  const reassign = useReassign()
+  const { data: membersData } = useMembers()
+  const members = membersData?.members ?? []
+  const isAdmin = useIsAdmin()
   const [overrides, setOverrides] = useState<Record<string, Stage>>({})
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [openHandle, setOpenHandle] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [niche, setNiche] = useState('')
+  const [memberFilter, setMemberFilter] = useState('')
   const [view, setView] = useState<'board' | 'list'>('board')
-  const [dealOpen, setDealOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkStage, setBulkStage] = useState<Stage | ''>('')
+  const [bulkMember, setBulkMember] = useState('')
+  // Optimistic owner overrides so reassignment reflects instantly (#11).
+  const [assignOverrides, setAssignOverrides] = useState<Record<string, { assigned_to: string; assigned_name: string }>>({})
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // Sum deal values per creator for the card badge + summary bar.
-  const dealByInf = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const d of dealData?.deals ?? []) {
-      if (d.deal_value) m.set(d.influencer_id, (m.get(d.influencer_id) ?? 0) + d.deal_value)
-    }
-    return m
-  }, [dealData])
-
-  const allRows = data?.rows ?? []
+  // Apply optimistic owner overrides on top of the fetched rows.
+  const allRows = (data?.rows ?? []).map(r => {
+    const ov = assignOverrides[r.id]
+    return ov ? { ...r, assigned_to: ov.assigned_to, assigned_name: ov.assigned_name } : r
+  })
   const rows = allRows.filter(r =>
-    (!search || r.name.toLowerCase().includes(search.toLowerCase()) || r.handle.toLowerCase().includes(search.toLowerCase())) &&
-    (!niche || r.niche === niche)
+    (!search || r.full_name?.toLowerCase().includes(search.toLowerCase()) || r.handle.toLowerCase().includes(search.toLowerCase())) &&
+    (!niche || r.niche === niche) &&
+    (!memberFilter || r.assigned_to === memberFilter)
   )
   const niches = Array.from(new Set(allRows.map(r => r.niche).filter(Boolean))) as string[]
-  const totalValue = allRows.reduce((a, r) => a + (dealByInf.get(r.id) ?? 0), 0)
 
-  const stageOf = (inf: Influencer): Stage => overrides[inf.id] ?? inf.stage
+  // Per-member progress (admin): in-pipeline + advanced counts (#11).
+  const teamProgress = isAdmin ? members.map(m => {
+    const mine = allRows.filter(r => r.assigned_to === m.id)
+    return { id: m.id, name: m.name, total: mine.length, advanced: mine.filter(r => ADVANCED_STAGES.includes(r.stage)).length }
+  }).filter(t => t.total > 0).sort((a, b) => b.total - a.total) : []
+
+  const stageOf = (r: PipelineRow): Stage => overrides[r.id] ?? r.stage
   const grouped = useMemo(() => {
-    const g: Record<string, Influencer[]> = Object.fromEntries(STAGES.map(s => [s, []]))
-    for (const inf of rows) g[stageOf(inf)]?.push(inf)
+    const g: Record<string, PipelineRow[]> = Object.fromEntries(STAGES.map(s => [s, []]))
+    for (const r of rows) g[stageOf(r)]?.push(r)
     return g
   }, [rows, overrides])
 
@@ -66,23 +94,37 @@ export function PipelineBoard() {
     const id = String(e.active.id)
     const to = e.over?.id as Stage | undefined
     if (!to || !STAGES.includes(to)) return
-    const inf = rows.find(r => r.id === id)
-    if (!inf || stageOf(inf) === to) return
+    const row = rows.find(r => r.id === id)
+    if (!row || stageOf(row) === to) return
     setOverrides(o => ({ ...o, [id]: to }))
-    updateInf.mutate({ id, patch: { stage: to } }, {
-      onSuccess: () => toast.success(`${inf.name} → ${to}`),
+    updatePipe.mutate({ id, patch: { stage: to } }, {
+      onSuccess: () => toast.success(`${row.full_name || row.handle} → ${stageLabel(to)}`),
       onError: () => { setOverrides(o => { const n = { ...o }; delete n[id]; return n }); toast.error('Move failed') },
     })
   }
 
+  const toggleSel = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const applyBulkStage = async () => {
+    if (!bulkStage) return
+    const ids = [...selected]
+    await Promise.all(ids.map(id => updatePipe.mutateAsync({ id, patch: { stage: bulkStage } }).catch(() => null)))
+    toast.success(`Moved ${ids.length} to ${stageLabel(bulkStage)}`); setSelected(new Set()); setBulkStage('')
+  }
+  const applyBulkReassign = async () => {
+    if (!bulkMember) return
+    const ids = [...selected]
+    const member = members.find(m => m.id === bulkMember)
+    // Optimistically reflect the new owner so the board updates instantly (#11).
+    if (member) setAssignOverrides(o => { const n = { ...o }; ids.forEach(id => { n[id] = { assigned_to: member.id, assigned_name: member.name } }); return n })
+    await Promise.all(ids.map(id => reassign.mutateAsync({ id, toUserId: bulkMember }).catch(() => null)))
+    toast.success(`Reassigned ${ids.length}${member ? ` to ${member.name}` : ''}`); setSelected(new Set()); setBulkMember('')
+  }
+
   return (
     <div className="space-y-4">
-      {/* Summary + toolbar */}
       <div className="glass flex flex-wrap items-center gap-3 rounded-2xl p-3">
         <div className="flex items-center gap-4 pr-2">
-          <div><p className="text-xs text-muted-foreground">In pipeline</p><p className="text-lg font-bold">{allRows.length.toLocaleString()}</p></div>
-          <div className="h-8 w-px bg-border" />
-          <div><p className="text-xs text-muted-foreground">Total deal value</p><p className="text-lg font-bold text-emerald-400">{formatMoney(totalValue)}</p></div>
+          <div><p className="text-xs text-muted-foreground">{isAdmin ? 'Team pipeline' : 'In pipeline'}</p><p className="text-lg font-bold">{allRows.length.toLocaleString()}</p></div>
         </div>
         <div className="relative ml-auto min-w-[180px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -92,41 +134,85 @@ export function PipelineBoard() {
           <option value="">All niches</option>
           {niches.map(n => <option key={n} value={n}>{nicheLabel(n)}</option>)}
         </Select>
+        {isAdmin && (
+          <Select value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} className="w-44">
+            <option value="">All members</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </Select>
+        )}
         <div className="flex overflow-hidden rounded-md border border-border">
           <button onClick={() => setView('board')} className={cn('px-2 py-1.5', view === 'board' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted/60')}><LayoutGrid className="h-4 w-4" /></button>
           <button onClick={() => setView('list')} className={cn('px-2 py-1.5', view === 'list' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted/60')}><List className="h-4 w-4" /></button>
         </div>
-        <Button onClick={() => setDealOpen(true)}><Plus className="mr-1 h-4 w-4" /> New deal</Button>
       </div>
+
+      {/* Team progress (admin) — per-member pipeline + advanced counts; click to filter (#11) */}
+      {teamProgress.length > 0 && (
+        <div className="glass flex flex-wrap items-center gap-2 rounded-2xl p-3">
+          <span className="mr-1 text-xs font-medium text-muted-foreground">Team progress:</span>
+          {teamProgress.map(t => (
+            <button key={t.id} onClick={() => setMemberFilter(memberFilter === t.id ? '' : t.id)}
+              className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors',
+                memberFilter === t.id ? 'border-primary/50 bg-primary/10 text-foreground' : 'border-border bg-card/60 text-muted-foreground hover:border-primary/30')}>
+              <span className="font-medium text-foreground">{t.name}</span>
+              <span className="rounded-full bg-muted px-1.5 tabular-nums">{t.total}</span>
+              <span className="text-emerald-400 tabular-nums" title="advanced past contacted">{t.advanced} adv</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex gap-4 overflow-x-auto pb-4">{STAGES.map(s => <Skeleton key={s} className="h-[60vh] w-80 shrink-0 rounded-2xl" />)}</div>
       ) : allRows.length === 0 ? (
         <div className="glass flex flex-col items-center justify-center rounded-2xl py-20 text-center">
           <p className="text-sm font-medium">Your pipeline is empty</p>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Go to Influencers and use <span className="text-foreground">+ Add to Pipeline</span> to start working creators here.</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Go to Influencers and use <span className="text-foreground">+ Pipeline</span> to start working creators here.</p>
         </div>
       ) : view === 'board' ? (
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {STAGES.map(stage => <Column key={stage} stage={stage} items={grouped[stage]} dealByInf={dealByInf} onOpen={setOpenId} />)}
+            {STAGES.map(stage => <Column key={stage} stage={stage} items={grouped[stage]} onOpen={setOpenHandle} isAdmin={isAdmin} />)}
           </div>
-          <DragOverlay>{active ? <Card inf={active} value={dealByInf.get(active.id)} dragging /> : null}</DragOverlay>
+          <DragOverlay>{active ? <Card row={active} dragging isAdmin={isAdmin} /> : null}</DragOverlay>
         </DndContext>
       ) : (
-        <ListView rows={rows} dealByInf={dealByInf} onOpen={setOpenId} onStage={(id, s) => {
-          setOverrides(o => ({ ...o, [id]: s }))
-          updateInf.mutate({ id, patch: { stage: s } }, { onSuccess: () => toast.success(`Moved to ${s}`) })
-        }} />
+        <div className="space-y-3">
+          {selected.size > 0 && (
+            <div className="glass-strong flex flex-wrap items-center gap-3 rounded-xl border-primary/30 p-3">
+              <span className="text-sm font-medium">{selected.size} selected</span>
+              <div className="flex items-center gap-1.5">
+                <Select value={bulkStage} onChange={(e) => setBulkStage(e.target.value as Stage)} className="h-9 w-40">
+                  <option value="">Move to stage…</option>
+                  {STAGES.map(s => <option key={s} value={s}>{stageLabel(s)}</option>)}
+                </Select>
+                <Button size="sm" onClick={applyBulkStage} disabled={!bulkStage || updatePipe.isPending}>Apply</Button>
+              </div>
+              {isAdmin && (
+                <div className="flex items-center gap-1.5">
+                  <Select value={bulkMember} onChange={(e) => setBulkMember(e.target.value)} className="h-9 w-44">
+                    <option value="">Reassign to…</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </Select>
+                  <Button size="sm" variant="ghost" className="border border-border" onClick={applyBulkReassign} disabled={!bulkMember || reassign.isPending}><UserCog className="mr-1 h-4 w-4" /> Reassign</Button>
+                </div>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+            </div>
+          )}
+          <ListView rows={rows} isAdmin={isAdmin} selected={selected} onToggle={toggleSel} onOpen={setOpenHandle} onStage={(id, s) => {
+            setOverrides(o => ({ ...o, [id]: s }))
+            updatePipe.mutate({ id, patch: { stage: s } }, { onSuccess: () => toast.success(`Moved to ${stageLabel(s)}`) })
+          }} />
+        </div>
       )}
 
-      <NewDealModal open={dealOpen} onOpenChange={setDealOpen} />
-      <InfluencerDrawer influencerId={openId} onOpenChange={(o) => !o && setOpenId(null)} />
+      <InfluencerDrawer influencerId={openHandle} onOpenChange={(o) => !o && setOpenHandle(null)} />
     </div>
   )
 }
 
-function Column({ stage, items, dealByInf, onOpen }: { stage: Stage; items: Influencer[]; dealByInf: Map<string, number>; onOpen: (id: string) => void }) {
+function Column({ stage, items, onOpen, isAdmin }: { stage: Stage; items: PipelineRow[]; onOpen: (h: string) => void; isAdmin: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage })
   const reach = items.reduce((a, i) => a + (i.follower_count || 0), 0)
   const shown = items.slice(0, COLUMN_CAP)
@@ -135,13 +221,13 @@ function Column({ stage, items, dealByInf, onOpen }: { stage: Stage; items: Infl
       <div className="mb-2 flex items-center justify-between rounded-xl border border-border/60 bg-card/40 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: STAGE_HEX[stage] }} />
-          <span className="text-sm font-semibold">{stage}</span>
+          <span className="text-sm font-semibold">{stageLabel(stage)}</span>
           <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">{items.length}</span>
         </div>
         <span className="text-xs text-muted-foreground">{formatFollowers(reach)}</span>
       </div>
       <div ref={setNodeRef} className={cn('flex-1 space-y-2 rounded-2xl border border-dashed p-2 transition-colors min-h-[55vh]', isOver ? 'border-primary/60 bg-primary/5' : 'border-border/40')}>
-        {shown.map(inf => <DraggableCard key={inf.id} inf={inf} value={dealByInf.get(inf.id)} onOpen={onOpen} />)}
+        {shown.map(row => <DraggableCard key={row.id} row={row} onOpen={onOpen} isAdmin={isAdmin} />)}
         {items.length > COLUMN_CAP && <p className="py-2 text-center text-xs text-muted-foreground">+{items.length - COLUMN_CAP} more</p>}
         {items.length === 0 && <p className="py-8 text-center text-xs text-muted-foreground/60">Drop here</p>}
       </div>
@@ -149,64 +235,73 @@ function Column({ stage, items, dealByInf, onOpen }: { stage: Stage; items: Infl
   )
 }
 
-function DraggableCard({ inf, value, onOpen }: { inf: Influencer; value?: number; onOpen: (id: string) => void }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: inf.id })
+function DraggableCard({ row, onOpen, isAdmin }: { row: PipelineRow; onOpen: (h: string) => void; isAdmin: boolean }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: row.id })
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} className={cn('touch-none', isDragging && 'opacity-30')}>
-      <Card inf={inf} value={value} onOpen={() => onOpen(inf.id)} />
+      <Card row={row} onOpen={() => onOpen(row.handle)} isAdmin={isAdmin} />
     </div>
   )
 }
 
-function Card({ inf, value, dragging, onOpen }: { inf: Influencer; value?: number; dragging?: boolean; onOpen?: () => void }) {
-  const ig = safeUrl(inf.profile_url)
+function Card({ row, dragging, onOpen, isAdmin }: { row: PipelineRow; dragging?: boolean; onOpen?: () => void; isAdmin: boolean }) {
+  const ig = safeUrl(row.profile_url)
+  const stale = isStale(row)
   return (
     <div className={cn('cursor-grab rounded-xl border border-border/60 bg-card/70 p-3 transition-colors hover:border-primary/40', dragging && 'rotate-2 cursor-grabbing border-primary/60 shadow-2xl shadow-primary/30')}>
       <div className="flex items-center gap-2.5">
         <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-          <Avatar name={inf.name} size={34} />
+          <Avatar name={row.full_name || row.handle} size={34} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1"><p className="truncate text-sm font-medium">{inf.name}</p><VerifiedTick verified={inf.is_verified} /></div>
-            <p className="truncate text-xs text-muted-foreground">@{inf.handle}</p>
+            <div className="flex items-center gap-1"><p className="truncate text-sm font-medium">{row.full_name || row.handle}</p><VerifiedTick verified={row.is_verified} /></div>
+            <p className="truncate text-xs text-muted-foreground">@{row.handle}</p>
           </div>
         </button>
+        {stale && <span title={`No touch in ${STALE_DAYS}+ days`}><Clock className="h-3.5 w-3.5 text-amber-400" /></span>}
         {ig && <a href={ig} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} className="rounded-md p-1 text-muted-foreground hover:text-foreground"><ExternalLink className="h-3.5 w-3.5" /></a>}
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
-        <span className="font-medium text-foreground">{formatFollowers(inf.follower_count)}</span>
-        {value ? <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-400">{formatMoney(value)}</span> : <span className="text-muted-foreground">no deal</span>}
+        <span className="font-medium text-foreground">{formatFollowers(row.follower_count)}</span>
+        <div className="flex items-center gap-1.5">
+          {isAdmin && row.assigned_name && <span className="rounded bg-violet-500/15 px-1.5 py-0.5 font-medium text-violet-300">{row.assigned_name.split(' ')[0]}</span>}
+          {row.niche && <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">{nicheLabel(row.niche)}</span>}
+        </div>
       </div>
     </div>
   )
 }
 
-function ListView({ rows, dealByInf, onOpen, onStage }: { rows: Influencer[]; dealByInf: Map<string, number>; onOpen: (id: string) => void; onStage: (id: string, s: Stage) => void }) {
+function ListView({ rows, isAdmin, selected, onToggle, onOpen, onStage }: { rows: PipelineRow[]; isAdmin: boolean; selected: Set<string>; onToggle: (id: string) => void; onOpen: (h: string) => void; onStage: (id: string, s: Stage) => void }) {
+  const allSel = rows.length > 0 && rows.every(r => selected.has(r.id))
+  const toggleAll = () => rows.forEach(r => { if (allSel) { if (selected.has(r.id)) onToggle(r.id) } else if (!selected.has(r.id)) onToggle(r.id) })
   return (
     <div className="glass overflow-hidden rounded-2xl">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-3">Creator</th>
+              <th className="w-10 px-4 py-3"><SelBox checked={allSel} onChange={toggleAll} /></th>
+              <th className="px-2 py-3">Creator</th>
               <th className="px-3 py-3 text-right">Followers</th>
-              <th className="px-3 py-3 text-right">Deal value</th>
+              {isAdmin && <th className="px-3 py-3">Assigned</th>}
               <th className="px-3 py-3">Stage</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(inf => (
-              <tr key={inf.id} className="border-b border-border/40 hover:bg-muted/30">
-                <td className="px-4 py-2.5">
-                  <button onClick={() => onOpen(inf.id)} className="flex items-center gap-3 text-left">
-                    <Avatar name={inf.name} size={34} />
-                    <div className="min-w-0"><div className="flex items-center gap-1"><span className="truncate font-medium">{inf.name}</span><VerifiedTick verified={inf.is_verified} /></div><span className="text-xs text-muted-foreground">@{inf.handle}</span></div>
+            {rows.map(row => (
+              <tr key={row.id} className={cn('border-b border-border/40 hover:bg-muted/30', selected.has(row.id) && 'bg-primary/5')}>
+                <td className="px-4 py-2.5"><SelBox checked={selected.has(row.id)} onChange={() => onToggle(row.id)} /></td>
+                <td className="px-2 py-2.5">
+                  <button onClick={() => onOpen(row.handle)} className="flex items-center gap-3 text-left">
+                    <Avatar name={row.full_name || row.handle} size={34} />
+                    <div className="min-w-0"><div className="flex items-center gap-1"><span className="truncate font-medium">{row.full_name || row.handle}</span><VerifiedTick verified={row.is_verified} />{isStale(row) && <Clock className="h-3.5 w-3.5 text-amber-400" />}</div><span className="text-xs text-muted-foreground">@{row.handle}</span></div>
                   </button>
                 </td>
-                <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatFollowers(inf.follower_count)}</td>
-                <td className="px-3 py-2.5 text-right font-semibold text-emerald-400">{dealByInf.get(inf.id) ? formatMoney(dealByInf.get(inf.id)) : '—'}</td>
+                <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatFollowers(row.follower_count)}</td>
+                {isAdmin && <td className="px-3 py-2.5 text-xs text-muted-foreground">{row.assigned_name || '—'}</td>}
                 <td className="px-3 py-2.5">
-                  <Select value={inf.stage} onChange={(e) => onStage(inf.id, e.target.value as Stage)} className={cn('h-7 w-36 border-0 text-xs font-medium', STAGE_COLORS[inf.stage])}>
-                    {STAGES.map(s => <option key={s} value={s} className="bg-card text-foreground">{s}</option>)}
+                  <Select value={row.stage} onChange={(e) => onStage(row.id, e.target.value as Stage)} className={cn('h-7 w-36 border-0 text-xs font-medium', STAGE_COLORS[row.stage])}>
+                    {STAGES.map(s => <option key={s} value={s} className="bg-card text-foreground">{stageLabel(s)}</option>)}
                   </Select>
                 </td>
               </tr>
@@ -215,5 +310,14 @@ function ListView({ rows, dealByInf, onOpen, onStage }: { rows: Influencer[]; de
         </table>
       </div>
     </div>
+  )
+}
+
+function SelBox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button onClick={(e) => { e.stopPropagation(); onChange() }}
+      className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
+      {checked && <Check className="h-3 w-3" />}
+    </button>
   )
 }

@@ -1,16 +1,19 @@
 'use client'
 
-import { useStats } from '@/lib/api'
-import { NicheDonut, NicheReachBar, RevenueMonthChart } from '@/components/dashboard/charts'
-import { Avatar } from '@/components/ui/avatar'
+import { useAnalytics, useDeals } from '@/lib/api'
+import { NicheDonut, NicheReachBar, CountryBar } from '@/components/dashboard/charts'
+import { KpiCard } from '@/components/dashboard/kpi-card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { STAGES, STAGE_HEX, formatMoney, formatNum, cn } from '@/lib/utils'
-import { Film } from 'lucide-react'
+import { Avatar } from '@/components/ui/avatar'
+import { Target, TrendingUp, Film, Handshake } from 'lucide-react'
+import { STAGES, STAGE_HEX, ADVANCED_STAGES, stageLabel, nicheLabel, formatNum, cn } from '@/lib/utils'
+import type { Stage } from '@/types/database'
 
 export default function AnalyticsPage() {
-  const { data: stats, isLoading } = useStats()
+  const { data, isLoading } = useAnalytics()
+  const { data: dealsData } = useDeals()
 
-  if (isLoading || !stats) {
+  if (isLoading || !data) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -19,8 +22,11 @@ export default function AnalyticsPage() {
     )
   }
 
-  const stageCounts = new Map(stats.byStage.map(s => [s.stage, s.count]))
-  const inPipeline = stats.byStage.reduce((a, s) => a + s.count, 0)
+  const stageCounts = new Map(data.funnel.map(s => [s.stage, s.count]))
+  const inPipeline = data.funnel.reduce((a, s) => a + s.count, 0)
+  const advanced = data.funnel.filter(s => ADVANCED_STAGES.includes(s.stage as Stage)).reduce((a, s) => a + s.count, 0)
+  const advancedRate = inPipeline ? (advanced / inPipeline) * 100 : 0
+  const ds = dealsData?.stats
   let remaining = inPipeline
   const funnel = STAGES.map(stage => {
     const here = stageCounts.get(stage) ?? 0
@@ -33,17 +39,23 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <header className="animate-fade-up">
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Analytics</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Conversion, composition, and revenue across your {stats.totals.total.toLocaleString()} creators.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Pipeline conversion, deal output, and audience composition.</p>
       </header>
 
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard id="pipe" index={0} label="In Pipeline" value={inPipeline} sub="creators being worked" icon={Target} accent="violet" />
+        <KpiCard id="adv" index={1} label="Advanced" value={advancedRate} format={(n) => `${n.toFixed(0)}%`} sub={`${advanced} past first contact`} icon={TrendingUp} accent="emerald" />
+        <KpiCard id="deals" index={2} label="Deals" value={ds?.total ?? 0} sub={`${ds?.active ?? 0} active`} icon={Handshake} accent="amber" />
+        <KpiCard id="vids" index={3} label="Videos Posted" value={ds?.videosPosted ?? 0} format={(n) => formatNum(n)} sub={`${formatNum(ds?.totalViews ?? 0)} views`} icon={Film} accent="cyan" />
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Funnel conversion */}
-        <Panel title="Pipeline Conversion" subtitle={`Close rate ${stats.closeRate.toFixed(1)}% · ${inPipeline.toLocaleString()} in pipeline`}>
+        <Panel title="Pipeline Conversion" subtitle={`${inPipeline.toLocaleString()} creators moving through your stages`}>
           <div className="space-y-3">
             {funnel.map(f => (
               <div key={f.stage}>
                 <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="font-medium">{f.stage}</span>
+                  <span className="font-medium">{stageLabel(f.stage)}</span>
                   <span className="text-muted-foreground">{f.count.toLocaleString()} · {f.reachedPct.toFixed(0)}%</span>
                 </div>
                 <div className="h-2.5 overflow-hidden rounded-full bg-muted/40">
@@ -54,65 +66,74 @@ export default function AnalyticsPage() {
           </div>
         </Panel>
 
-        {/* Revenue over time */}
-        <Panel title="Revenue Over Time" subtitle="Revenue won per month — your growth signal">
-          <RevenueMonthChart data={stats.revenueByMonth ?? []} />
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            <Stat label="Revenue Won" value={formatMoney(stats.deals.revenue_won)} accent="text-emerald-400" />
-            <Stat label="In Pipeline" value={formatMoney(stats.deals.pipeline_value)} accent="text-amber-400" />
-            <Stat label="Total Logged" value={formatMoney(stats.deals.total_value)} accent="text-violet-400" />
-          </div>
-        </Panel>
-
-        <Panel title="Niche Mix" subtitle="Creators by category">
-          <NicheDonut data={stats.byNiche} />
-        </Panel>
-
-        <Panel title="Reach by Niche" subtitle="Total followers per category">
-          <NicheReachBar data={stats.byNiche} />
-        </Panel>
-
-        {/* Top deals */}
-        <Panel title="Top Deals by Value" subtitle="Your highest-value collaborations" className="lg:col-span-2">
-          {stats.topDeals && stats.topDeals.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="px-3 py-2">Creator</th>
-                    <th className="px-3 py-2">Deal</th>
-                    <th className="px-3 py-2 text-right">Value</th>
-                    <th className="px-3 py-2 text-right">Reel views</th>
-                    <th className="px-3 py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.topDeals.map(t => (
-                    <tr key={t.id} className="border-b border-border/40">
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <Avatar name={t.influencer_name} size={28} />
-                          <span className="truncate font-medium">{t.influencer_name}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex items-center gap-1.5">
-                          {t.reel_views != null && <Film className="h-3.5 w-3.5 text-cyan-400" />}
-                          {t.title}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-emerald-400">{formatMoney(t.deal_value)}</td>
-                      <td className="px-3 py-2.5 text-right text-muted-foreground">{t.reel_views != null ? formatNum(t.reel_views) : '—'}</td>
-                      <td className="px-3 py-2.5 capitalize text-muted-foreground">{t.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <Panel title="Niche Performance" subtitle="Share advancing past first contact">
+          {data.nichePerf.length === 0 ? <EmptyRow /> : (
+            <div className="space-y-3">
+              {data.nichePerf.slice(0, 7).map(n => (
+                <div key={n.niche}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="font-medium">{nicheLabel(n.niche)}</span>
+                    <span className="text-muted-foreground">{n.advanced}/{n.total} · {n.rate.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted/40">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${n.rate}%` }} />
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <p className="py-10 text-center text-sm text-muted-foreground">No deals with a value yet. Log deals to see your top collaborations.</p>
           )}
         </Panel>
+
+        <Panel title="Niche Mix" subtitle="Pipeline creators by category">
+          <NicheDonut data={data.nicheMix} />
+        </Panel>
+
+        <Panel title="Reach by Niche" subtitle="Total followers per category (catalog)">
+          <NicheReachBar data={data.reachByNiche} />
+        </Panel>
+
+        <Panel title="Country Mix" subtitle="Pipeline creators by country">
+          <CountryBar data={data.countryMix} />
+        </Panel>
+
+        {data.members && (
+          <Panel title="Team Performance" subtitle="Per-member outreach (admin view)">
+            {data.members.length === 0 ? <EmptyRow /> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                      <th className="py-2 pr-2">Member</th>
+                      <th className="px-2 py-2 text-right">Assigned</th>
+                      <th className="px-2 py-2 text-right">Contacted</th>
+                      <th className="px-2 py-2 text-right">Responded</th>
+                      <th className="px-2 py-2 text-right">Videos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.members.map(m => (
+                      <tr key={m.id} className="border-b border-border/40">
+                        <td className="py-2 pr-2">
+                          <div className="flex items-center gap-2">
+                            <Avatar name={m.name} size={28} />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{m.name}</p>
+                              <p className="text-[11px] capitalize text-muted-foreground">{m.role}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">{m.assigned}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{m.contacted}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{m.responded}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{m.videos}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        )}
       </div>
     </div>
   )
@@ -128,11 +149,6 @@ function Panel({ title, subtitle, children, className }: { title: string; subtit
   )
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card/40 p-3 text-center">
-      <p className={cn('text-lg font-bold', accent)}>{value}</p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
-  )
+function EmptyRow() {
+  return <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">No pipeline data yet</div>
 }

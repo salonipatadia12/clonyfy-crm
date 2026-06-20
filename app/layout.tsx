@@ -4,7 +4,7 @@ import { Providers } from "./providers"
 
 export const metadata: Metadata = {
   title: "Clonyfy — Influencer CRM",
-  description: "Turn 3,000+ scraped creators into closed deals.",
+  description: "Source, organize, and run outreach to thousands of creators.",
 }
 
 export default function RootLayout({

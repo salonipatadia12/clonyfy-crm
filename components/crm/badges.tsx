@@ -1,28 +1,11 @@
 import { BadgeCheck } from 'lucide-react'
-import { cn, STAGE_COLORS, TIER_STYLES, ENG_STYLES, PRIORITY_STYLES, nicheLabel } from '@/lib/utils'
-import type { Stage, Tier, Priority } from '@/types/database'
-
-export function TierBadge({ tier, className }: { tier: Tier | null; className?: string }) {
-  if (!tier) return <span className="text-xs text-muted-foreground">—</span>
-  return (
-    <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold', TIER_STYLES[tier], className)}>
-      {tier}
-    </span>
-  )
-}
+import { cn, STAGE_COLORS, stageLabel, nicheLabel } from '@/lib/utils'
+import type { Stage } from '@/types/database'
 
 export function StageBadge({ stage, className }: { stage: Stage; className?: string }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', STAGE_COLORS[stage], className)}>
-      {stage}
-    </span>
-  )
-}
-
-export function PriorityBadge({ priority }: { priority: Priority }) {
-  return (
-    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize', PRIORITY_STYLES[priority])}>
-      {priority}
+      {stageLabel(stage)}
     </span>
   )
 }
@@ -36,12 +19,7 @@ export function NicheChip({ niche }: { niche: string | null }) {
   )
 }
 
-export function EngQuality({ value }: { value: string | null }) {
-  if (!value) return null
-  return <span className={cn('text-xs font-medium capitalize', ENG_STYLES[value] ?? 'text-muted-foreground')}>{value.replace('_', ' ')}</span>
-}
-
-export function VerifiedTick({ verified }: { verified: number }) {
+export function VerifiedTick({ verified }: { verified: boolean | number | null }) {
   if (!verified) return null
   return <BadgeCheck className="inline h-4 w-4 text-sky-400" aria-label="verified" />
 }

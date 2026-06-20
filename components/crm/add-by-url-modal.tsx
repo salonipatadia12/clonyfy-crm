@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
-import { fetchProfile, useAddByUrl, type ProfilePreview } from '@/lib/api'
+import { fetchProfile, useAddCreator, type ProfilePreview } from '@/lib/api'
 import { formatFollowers } from '@/lib/utils'
 import { Loader2, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,7 +15,7 @@ export function AddByUrlModal({ open, onOpenChange }: { open: boolean; onOpenCha
   const [loading, setLoading] = useState(false)
   const [preview, setPreview] = useState<ProfilePreview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const addByUrl = useAddByUrl()
+  const addByUrl = useAddCreator()
 
   const reset = () => { setUrl(''); setPreview(null); setError(null); setLoading(false) }
   const close = (o: boolean) => { if (!o) reset(); onOpenChange(o) }
