@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Influencer, PipelineRow, ActivityEvent, StatsResponse, OverviewResponse,
   AnalyticsResponse, Stage, Member, NotificationRow, Template, SavedList, Comment,
-  DealsResponse, DealDetail, DealVideo,
+  DealsResponse, DealDetail, DealVideo, Campaign, CampaignDetail,
 } from '@/types/database'
 
 async function get<T>(url: string): Promise<T> {
@@ -110,7 +110,7 @@ export function useAnalytics() {
 // ---- Pipeline ---------------------------------------------------------------
 
 export interface PipelineFilters {
-  stage?: Stage; niche?: string; country?: string; assignedTo?: string; search?: string
+  stage?: Stage; niche?: string; country?: string; assignedTo?: string; search?: string; campaignId?: string
 }
 function pipelineQuery(f: PipelineFilters): string {
   const p = new URLSearchParams()
@@ -119,6 +119,7 @@ function pipelineQuery(f: PipelineFilters): string {
   if (f.country) p.set('country', f.country)
   if (f.assignedTo) p.set('assignedTo', f.assignedTo)
   if (f.search) p.set('search', f.search)
+  if (f.campaignId) p.set('campaignId', f.campaignId)
   return p.toString()
 }
 
@@ -429,5 +430,44 @@ export function useDeleteDealVideo() {
   return useMutation({
     mutationFn: (id: string) => send<{ ok: boolean }>(`/api/deals/videos/${id}`, 'DELETE'),
     onSuccess: () => invalidateDeals(qc),
+  })
+}
+
+// ---- Campaigns --------------------------------------------------------------
+const invalidateCampaigns = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['campaigns'] })
+  qc.invalidateQueries({ queryKey: ['campaign'] })
+  qc.invalidateQueries({ queryKey: ['pipeline'] })
+  qc.invalidateQueries({ queryKey: ['deals'] })
+}
+export function useCampaigns() {
+  return useQuery({ queryKey: ['campaigns'], queryFn: () => get<{ campaigns: Campaign[] }>('/api/campaigns') })
+}
+export function useCampaign(id: string | null) {
+  return useQuery({
+    queryKey: ['campaign', id],
+    queryFn: () => get<{ campaign: CampaignDetail }>(`/api/campaigns/${id}`).then(r => r.campaign),
+    enabled: !!id,
+  })
+}
+export function useCreateCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Record<string, unknown>) => send<{ campaign: Campaign }>('/api/campaigns', 'POST', input),
+    onSuccess: () => invalidateCampaigns(qc),
+  })
+}
+export function useUpdateCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) => send<{ campaign: Campaign }>(`/api/campaigns/${id}`, 'PATCH', patch),
+    onSuccess: () => invalidateCampaigns(qc),
+  })
+}
+export function useDeleteCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => send<{ ok: boolean }>(`/api/campaigns/${id}`, 'DELETE'),
+    onSuccess: () => invalidateCampaigns(qc),
   })
 }

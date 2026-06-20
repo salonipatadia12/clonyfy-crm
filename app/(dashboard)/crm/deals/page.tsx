@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Handshake, Film, TrendingUp, Clock, Search, Plus, ArrowUp, ArrowDown, Check, Trash2 } from 'lucide-react'
-import { useDeals, useUpdateDeal, useDeleteDeal } from '@/lib/api'
+import { useDeals, useUpdateDeal, useDeleteDeal, useCampaigns } from '@/lib/api'
 import { toast } from 'sonner'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
@@ -38,8 +38,12 @@ export default function DealsPage() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkCampaign, setBulkCampaign] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState('')
   const updateDeal = useUpdateDeal()
   const deleteDeal = useDeleteDeal()
+  const { data: campData } = useCampaigns()
+  const campaigns = campData?.campaigns ?? []
 
   const creators = useMemo(() => {
     const seen = new Map<string, string>()
@@ -50,6 +54,7 @@ export default function DealsPage() {
   const deals = useMemo(() => {
     let rows = (data?.deals ?? []) as Deal[]
     if (filter) rows = rows.filter(d => d.status === filter)
+    if (campaignFilter) rows = rows.filter(d => d.campaign_id === campaignFilter)
     if (ownerFilter === 'mine') rows = rows.filter(d => d.created_by === me.id)
     else if (ownerFilter) rows = rows.filter(d => d.created_by === ownerFilter)
     if (search) {
@@ -62,7 +67,7 @@ export default function DealsPage() {
       if (sort === 'status') return a.status.localeCompare(b.status) * dir
       return (a.created_at < b.created_at ? -1 : 1) * dir
     })
-  }, [data, filter, ownerFilter, me.id, search, sort, order])
+  }, [data, filter, campaignFilter, ownerFilter, me.id, search, sort, order])
 
   const s = data?.stats
 
@@ -86,6 +91,13 @@ export default function DealsPage() {
     if (!window.confirm(`Delete ${ids.length} deal${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return
     await Promise.all(ids.map(id => deleteDeal.mutateAsync(id).catch(() => null)))
     toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
+  }
+  const applyBulkCampaign = async () => {
+    const ids = [...selected]
+    if (!ids.length || !bulkCampaign) return
+    const cid = bulkCampaign === '__none__' ? null : bulkCampaign
+    await Promise.all(ids.map(id => updateDeal.mutateAsync({ id, patch: { campaign_id: cid } }).catch(() => null)))
+    toast.success(`Tagged ${ids.length} deal${ids.length > 1 ? 's' : ''}`); setSelected(new Set()); setBulkCampaign('')
   }
   const exportSelected = () => {
     const rows = (selected.size ? deals.filter(d => selected.has(d.id)) : deals) as unknown as Record<string, unknown>[]
@@ -138,6 +150,12 @@ export default function DealsPage() {
             <option value="mine">Created by me</option>
             {isAdmin && creators.filter(c => c.id !== me.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
+          {campaigns.length > 0 && (
+            <Select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)} className="w-44">
+              <option value="">All campaigns</option>
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          )}
           <Select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="w-36">
             <option value="created_at">Created</option>
             <option value="total_views">Views</option>
@@ -159,6 +177,14 @@ export default function DealsPage() {
                 <option value="cancelled">Cancelled</option>
               </Select>
               <Button size="sm" onClick={applyBulkStatus} disabled={!bulkStatus || updateDeal.isPending}>Apply</Button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Select value={bulkCampaign} onChange={(e) => setBulkCampaign(e.target.value)} className="h-9 w-44">
+                <option value="">Set campaign…</option>
+                <option value="__none__">— Remove from campaign —</option>
+                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              <Button size="sm" onClick={applyBulkCampaign} disabled={!bulkCampaign || updateDeal.isPending}>Tag</Button>
             </div>
             <Button size="sm" variant="ghost" onClick={exportSelected} className="border border-border"><Download className="mr-1 h-4 w-4" /> Export</Button>
             <Button size="sm" variant="ghost" onClick={applyBulkDelete} disabled={deleteDeal.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>

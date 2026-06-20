@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     country: sp.get('country') || undefined,
     assignedTo: sp.get('assignedTo') || undefined,
     search: sp.get('search') || undefined,
+    campaignId: sp.get('campaignId') || undefined,
   }
   try {
     return NextResponse.json({ rows: await listPipeline(ctx.db, ctx.profile, params) })

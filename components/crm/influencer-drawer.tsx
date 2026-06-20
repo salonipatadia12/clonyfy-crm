@@ -11,11 +11,11 @@ import { Modal } from '@/components/ui/modal'
 import { NicheChip, VerifiedTick } from '@/components/crm/badges'
 import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-prompt'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useInfluencer, useUpdatePipeline, useAddToPipeline, useRemoveFromPipeline, useReassign, useMembers, useTemplates, useComments, useAddComment, useDeleteComment, useCreateDeal, type AddToPipelineResult } from '@/lib/api'
+import { useInfluencer, useUpdatePipeline, useAddToPipeline, useRemoveFromPipeline, useReassign, useMembers, useTemplates, useComments, useAddComment, useDeleteComment, useCreateDeal, useCampaigns, type AddToPipelineResult } from '@/lib/api'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
 import { STAGES, stageLabel, formatFollowers, formatNum, nicheLabel, safeUrl, cn } from '@/lib/utils'
 import type { PipelineRow, Stage, ActivityEvent } from '@/types/database'
-import { ExternalLink, Plus, History, Mail, Copy, Clock, Trash2, Film, Percent, Users, MessageSquare, Send, Handshake, CalendarClock } from 'lucide-react'
+import { ExternalLink, Plus, History, Mail, Copy, Clock, Trash2, Film, Percent, Users, MessageSquare, Send, Handshake, CalendarClock, Megaphone } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -263,6 +263,8 @@ function PipelineWork({ row, onPatch, onRemove }: {
   onPatch: (patch: Record<string, unknown>, msg?: string) => void
   onRemove: () => void
 }) {
+  const { data: campData } = useCampaigns()
+  const campaigns = campData?.campaigns ?? []
   const [notes, setNotes] = useState(row.notes ?? '')
   const [cType, setCType] = useState(row.commission_type ?? '')
   const [cPct, setCPct] = useState(row.commission_percentage?.toString() ?? '')
@@ -291,6 +293,14 @@ function PipelineWork({ row, onPatch, onRemove }: {
               className="shrink-0 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:text-foreground">+1w</button>
           </div>
         </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Megaphone className="h-3.5 w-3.5" /> Campaign</p>
+        <Select value={row.campaign_id ?? ''} onChange={(e) => onPatch({ campaign_id: e.target.value || null }, 'Campaign updated')}>
+          <option value="">No campaign</option>
+          {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
       </div>
 
       <div>

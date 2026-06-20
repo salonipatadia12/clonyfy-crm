@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useDeal, useUpdateDeal, useDeleteDeal, useAddDealVideo, useUpdateDealVideo, useDeleteDealVideo } from '@/lib/api'
+import { useDeal, useUpdateDeal, useDeleteDeal, useAddDealVideo, useUpdateDealVideo, useDeleteDealVideo, useCampaigns } from '@/lib/api'
 import { formatNum, safeUrl, cn } from '@/lib/utils'
 import { SignedBadge, ApprovalBadge } from '@/components/crm/badges'
 import { ExternalLink, Film, Trash2, Plus, Eye, Heart, MessageCircle, Activity, PenLine, CalendarClock } from 'lucide-react'
@@ -24,6 +24,8 @@ const isOverdue = (v: DealVideo) => !!v.due_date && v.due_date <= todayISO() && 
 
 export function DealDrawer({ dealId, onOpenChange }: { dealId: string | null; onOpenChange: (o: boolean) => void }) {
   const { data: deal, isLoading } = useDeal(dealId)
+  const { data: campData } = useCampaigns()
+  const campaigns = campData?.campaigns ?? []
   const update = useUpdateDeal()
   const del = useDeleteDeal()
   const addVideo = useAddDealVideo(dealId ?? '')
@@ -77,6 +79,13 @@ export function DealDrawer({ dealId, onOpenChange }: { dealId: string | null; on
                   <label className="mb-1 block text-xs text-muted-foreground">Videos planned</label>
                   <Input type="number" min={0} value={planned} onChange={(e) => setPlanned(e.target.value)}
                     onBlur={() => { if (Number(planned) !== deal.videos_planned) save({ videos_planned: Number(planned) }) }} />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-1 block text-xs text-muted-foreground">Campaign</label>
+                  <Select value={deal.campaign_id ?? ''} onChange={(e) => save({ campaign_id: e.target.value || null }, 'Campaign updated')}>
+                    <option value="">No campaign</option>
+                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
                 </div>
               </div>
 

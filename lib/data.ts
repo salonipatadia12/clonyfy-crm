@@ -304,7 +304,7 @@ function bucketFor(f: number | null): string | null {
 // ---- Pipeline ---------------------------------------------------------------
 
 export interface PipelineListParams {
-  stage?: Stage; niche?: string; country?: string; assignedTo?: string; search?: string
+  stage?: Stage; niche?: string; country?: string; assignedTo?: string; search?: string; campaignId?: string
 }
 
 export async function listPipeline(db: Db, profile: Profile, p: PipelineListParams = {}): Promise<PipelineRow[]> {
@@ -314,6 +314,7 @@ export async function listPipeline(db: Db, profile: Profile, p: PipelineListPara
   if (p.stage) q = q.eq('stage', p.stage)
   if (p.niche) q = q.eq('niche', p.niche)
   if (p.country) q = q.eq('country', p.country)
+  if (p.campaignId) q = q.eq('campaign_id', p.campaignId)
   if (p.search) {
     const s = `%${sanitizeSearch(p.search)}%`
     q = q.or(`handle.ilike.${s},full_name.ilike.${s}`)
@@ -321,7 +322,15 @@ export async function listPipeline(db: Db, profile: Profile, p: PipelineListPara
   q = q.order('last_touch', { ascending: false, nullsFirst: false }).order('added_at', { ascending: false })
   const { data, error } = await q
   if (error) throw new Error(error.message)
-  return (data ?? []) as PipelineRow[]
+  const rows = (data ?? []) as PipelineRow[]
+  // Decorate with campaign names for display/filter chips.
+  const ids = [...new Set(rows.map(r => r.campaign_id).filter(Boolean))] as string[]
+  if (ids.length) {
+    const { data: camps } = await db.from('campaigns').select('id, name').eq('workspace_id', profile.workspace_id).in('id', ids)
+    const nameOf = new Map((camps ?? []).map(c => [c.id, c.name]))
+    for (const r of rows) r.campaign_name = r.campaign_id ? (nameOf.get(r.campaign_id) ?? null) : null
+  }
+  return rows
 }
 
 export interface ConflictInfo { handle: string; assigned_name: string | null; assigned_to: string | null }
@@ -1288,6 +1297,100 @@ export async function deleteDealVideo(db: Db, profile: Profile, videoId: string)
   if (!v) throw new Error('video not found')
   await assertDealAccess(db, profile, v.deal_id)
   const { error } = await db.from('deal_videos').delete().eq('workspace_id', profile.workspace_id).eq('id', videoId)
+  if (error) throw new Error(error.message)
+  return { ok: true }
+}
+
+// ---- Campaigns (client/brand engagements grouping creators + deals) ---------
+
+const CAMPAIGN_COLS = 'id, name, client, brief, status, start_date, end_date, created_by, created_at, updated_at'
+
+// All workspace campaigns + per-campaign counts (pipeline creators, deals, signed).
+export async function listCampaigns(db: Db, profile: Profile) {
+  const [{ data: camps, error }, { data: pipes }, { data: deals }] = await Promise.all([
+    db.from('campaigns').select(CAMPAIGN_COLS).eq('workspace_id', profile.workspace_id).order('created_at', { ascending: false }),
+    db.from('pipeline').select('campaign_id').eq('workspace_id', profile.workspace_id),
+    db.from('deals').select('campaign_id, signed_at').eq('workspace_id', profile.workspace_id),
+  ])
+  if (error) throw new Error(error.message)
+  const pipeCount = new Map<string, number>()
+  for (const p of pipes ?? []) if (p.campaign_id) pipeCount.set(p.campaign_id, (pipeCount.get(p.campaign_id) ?? 0) + 1)
+  const dealCount = new Map<string, number>()
+  const signedCount = new Map<string, number>()
+  for (const d of deals ?? []) {
+    if (!d.campaign_id) continue
+    dealCount.set(d.campaign_id, (dealCount.get(d.campaign_id) ?? 0) + 1)
+    if (d.signed_at) signedCount.set(d.campaign_id, (signedCount.get(d.campaign_id) ?? 0) + 1)
+  }
+  const campaigns = (camps ?? []).map(c => ({
+    ...c,
+    pipeline_count: pipeCount.get(c.id) ?? 0,
+    deal_count: dealCount.get(c.id) ?? 0,
+    signed_count: signedCount.get(c.id) ?? 0,
+  }))
+  return { campaigns }
+}
+
+// One campaign + the creators (pipeline rows) and deals tagged to it.
+export async function getCampaign(db: Db, profile: Profile, id: string) {
+  const { data: c } = await db.from('campaigns').select(CAMPAIGN_COLS).eq('workspace_id', profile.workspace_id).eq('id', id).maybeSingle()
+  if (!c) throw new Error('campaign not found')
+  // Members only see their own pipeline rows / deals within the campaign.
+  let pq = db.from('pipeline').select('*').eq('workspace_id', profile.workspace_id).eq('campaign_id', id)
+  let dq = db.from('deals').select(DEAL_COLS).eq('workspace_id', profile.workspace_id).eq('campaign_id', id)
+  if (profile.role !== 'admin') { pq = pq.eq('assigned_to', profile.id); dq = dq.eq('owner_id', profile.id) }
+  const [{ data: pipeline }, { data: deals }, { data: users }] = await Promise.all([
+    pq, dq, db.from('users').select('id, name').eq('workspace_id', profile.workspace_id),
+  ])
+  const nameOf = new Map((users ?? []).map(u => [u.id, u.name]))
+  return {
+    ...c,
+    pipeline_count: (pipeline ?? []).length,
+    deal_count: (deals ?? []).length,
+    signed_count: (deals ?? []).filter(d => d.signed_at).length,
+    pipeline: pipeline ?? [],
+    deals: (deals ?? []).map(d => ({
+      ...d,
+      owner_name: d.owner_id ? (nameOf.get(d.owner_id) ?? null) : null,
+      created_by_name: d.created_by ? (nameOf.get(d.created_by) ?? null) : null,
+      videos_posted: 0, total_views: 0,
+    })),
+  }
+}
+
+export async function createCampaign(db: Db, profile: Profile, input: { name?: string; client?: string; brief?: string; status?: string; start_date?: string; end_date?: string }) {
+  if (profile.role !== 'admin') throw new Error('admin only')
+  const name = input.name?.trim()
+  if (!name) throw new Error('Campaign name required')
+  const status = ['planning', 'active', 'completed', 'archived'].includes(input.status ?? '') ? input.status : 'planning'
+  const { data, error } = await db.from('campaigns').insert({
+    workspace_id: profile.workspace_id, name, client: input.client?.trim() || null,
+    brief: input.brief?.trim() || null, status,
+    start_date: input.start_date || null, end_date: input.end_date || null,
+    created_by: profile.id,
+  }).select(CAMPAIGN_COLS).single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function updateCampaign(db: Db, profile: Profile, id: string, patch: Record<string, unknown>) {
+  if (profile.role !== 'admin') throw new Error('admin only')
+  const set: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (typeof patch.name === 'string' && patch.name.trim()) set.name = patch.name.trim()
+  if ('client' in patch) set.client = patch.client ? String(patch.client).trim() : null
+  if ('brief' in patch) set.brief = patch.brief ? String(patch.brief) : null
+  if (['planning', 'active', 'completed', 'archived'].includes(String(patch.status))) set.status = patch.status
+  if ('start_date' in patch) set.start_date = patch.start_date ? String(patch.start_date) : null
+  if ('end_date' in patch) set.end_date = patch.end_date ? String(patch.end_date) : null
+  const { data, error } = await db.from('campaigns').update(set).eq('workspace_id', profile.workspace_id).eq('id', id).select(CAMPAIGN_COLS).single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function deleteCampaign(db: Db, profile: Profile, id: string) {
+  if (profile.role !== 'admin') throw new Error('admin only')
+  // FK on delete set null detaches pipeline rows + deals; they survive.
+  const { error } = await db.from('campaigns').delete().eq('workspace_id', profile.workspace_id).eq('id', id)
   if (error) throw new Error(error.message)
   return { ok: true }
 }

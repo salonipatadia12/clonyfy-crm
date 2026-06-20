@@ -9,6 +9,7 @@ import {
   Users,
   Kanban,
   Handshake,
+  Megaphone,
   BarChart3,
   FileText,
   History,
@@ -29,6 +30,7 @@ const NAV = [
   { href: '/crm/influencers', label: 'Influencers', icon: Users },
   { href: '/crm/pipeline', label: 'Pipeline', icon: Kanban },
   { href: '/crm/deals', label: 'Deals', icon: Handshake },
+  { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/templates', label: 'Templates', icon: FileText },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]

@@ -6,7 +6,7 @@ import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, closestCorners, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core'
-import { usePipeline, useUpdatePipeline, useReassign, useMembers, useRemoveFromPipeline } from '@/lib/api'
+import { usePipeline, useUpdatePipeline, useReassign, useMembers, useRemoveFromPipeline, useCampaigns } from '@/lib/api'
 import { useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
@@ -48,6 +48,8 @@ function PipelineBoardInner() {
   const removePipe = useRemoveFromPipeline()
   const { data: membersData } = useMembers()
   const members = membersData?.members ?? []
+  const { data: campData } = useCampaigns()
+  const campaigns = campData?.campaigns ?? []
   const isAdmin = useIsAdmin()
   const [overrides, setOverrides] = useState<Record<string, Stage>>({})
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -55,10 +57,12 @@ function PipelineBoardInner() {
   const [search, setSearch] = useState('')
   const [niche, setNiche] = useState('')
   const [memberFilter, setMemberFilter] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState('')
   const [view, setView] = useState<'board' | 'list'>('board')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStage, setBulkStage] = useState<Stage | ''>('')
   const [bulkMember, setBulkMember] = useState('')
+  const [bulkCampaign, setBulkCampaign] = useState('')
   // Optimistic owner overrides so reassignment reflects instantly (#11).
   const [assignOverrides, setAssignOverrides] = useState<Record<string, { assigned_to: string; assigned_name: string }>>({})
   // Queue of just-closed creators awaiting a deal — surfaced one at a time so a
@@ -84,7 +88,8 @@ function PipelineBoardInner() {
   const rows = allRows.filter(r =>
     (!search || r.full_name?.toLowerCase().includes(search.toLowerCase()) || r.handle.toLowerCase().includes(search.toLowerCase())) &&
     (!niche || r.niche === niche) &&
-    (!memberFilter || r.assigned_to === memberFilter)
+    (!memberFilter || r.assigned_to === memberFilter) &&
+    (!campaignFilter || r.campaign_id === campaignFilter)
   )
   const niches = Array.from(new Set(allRows.map(r => r.niche).filter(Boolean))) as string[]
 
@@ -143,6 +148,13 @@ function PipelineBoardInner() {
     await Promise.all(ids.map(id => removePipe.mutateAsync(id).catch(() => null)))
     toast.success(`Removed ${ids.length} from pipeline`); setSelected(new Set())
   }
+  const applyBulkCampaign = async () => {
+    const ids = [...selected]
+    if (!ids.length || !bulkCampaign) return
+    const cid = bulkCampaign === '__none__' ? null : bulkCampaign
+    await Promise.all(ids.map(id => updatePipe.mutateAsync({ id, patch: { campaign_id: cid } }).catch(() => null)))
+    toast.success(`Tagged ${ids.length}`); setSelected(new Set()); setBulkCampaign('')
+  }
   const exportSelected = () => {
     const picked = (selected.size ? rows.filter(r => selected.has(r.id)) : rows).map(r => ({ ...r, stage: stageLabel(stageOf(r)) }))
     downloadCsv('clonyfy-pipeline.csv', picked as unknown as Record<string, unknown>[], [
@@ -172,6 +184,12 @@ function PipelineBoardInner() {
           <Select value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} className="w-44">
             <option value="">All members</option>
             {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </Select>
+        )}
+        {campaigns.length > 0 && (
+          <Select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)} className="w-44">
+            <option value="">All campaigns</option>
+            {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         )}
         <div className="flex overflow-hidden rounded-md border border-border">
@@ -229,6 +247,16 @@ function PipelineBoardInner() {
                     {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </Select>
                   <Button size="sm" variant="ghost" className="border border-border" onClick={applyBulkReassign} disabled={!bulkMember || reassign.isPending}><UserCog className="mr-1 h-4 w-4" /> Reassign</Button>
+                </div>
+              )}
+              {campaigns.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Select value={bulkCampaign} onChange={(e) => setBulkCampaign(e.target.value)} className="h-9 w-44">
+                    <option value="">Set campaign…</option>
+                    <option value="__none__">— Remove from campaign —</option>
+                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                  <Button size="sm" className="border border-border" onClick={applyBulkCampaign} disabled={!bulkCampaign || updatePipe.isPending}>Tag</Button>
                 </div>
               )}
               <Button size="sm" variant="ghost" className="border border-border" onClick={exportSelected}><Download className="mr-1 h-4 w-4" /> Export</Button>
