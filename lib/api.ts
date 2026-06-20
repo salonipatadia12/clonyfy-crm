@@ -272,7 +272,7 @@ export function useNotifications() {
   return useQuery({
     queryKey: ['notifications'],
     queryFn: () => get<{ rows: NotificationRow[]; unread: number }>('/api/notifications'),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   })
 }
 

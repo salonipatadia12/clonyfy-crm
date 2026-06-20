@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VerifiedTick } from '@/components/crm/badges'
 import { InfluencerDrawer } from '@/components/crm/influencer-drawer'
+import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-prompt'
 import { STAGES, STAGE_HEX, STAGE_COLORS, ADVANCED_STAGES, stageLabel, formatFollowers, nicheLabel, safeUrl, cn } from '@/lib/utils'
 import type { PipelineRow, Stage } from '@/types/database'
 import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog } from 'lucide-react'
@@ -59,8 +60,20 @@ function PipelineBoardInner() {
   const [bulkMember, setBulkMember] = useState('')
   // Optimistic owner overrides so reassignment reflects instantly (#11).
   const [assignOverrides, setAssignOverrides] = useState<Record<string, { assigned_to: string; assigned_name: string }>>({})
+  // Queue of just-closed creators awaiting a deal — surfaced one at a time so a
+  // batch of closes never slips ("create the deal now" prompt).
+  const [closeQueue, setCloseQueue] = useState<CloseTarget[]>([])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  // Enqueue rows that just moved into "Closed" (skip ones already there).
+  const enqueueClose = (ids: string[]) => {
+    const targets = ids
+      .map(id => allRows.find(r => r.id === id))
+      .filter((r): r is PipelineRow => !!r && r.stage !== 'closed')
+      .map(r => ({ pipelineId: r.id, handle: r.handle, fullName: r.full_name }))
+    if (targets.length) setCloseQueue(q => [...q, ...targets])
+  }
 
   // Apply optimistic owner overrides on top of the fetched rows.
   const allRows = (data?.rows ?? []).map(r => {
@@ -96,9 +109,10 @@ function PipelineBoardInner() {
     if (!to || !STAGES.includes(to)) return
     const row = rows.find(r => r.id === id)
     if (!row || stageOf(row) === to) return
+    const wasClosed = stageOf(row) === 'closed'
     setOverrides(o => ({ ...o, [id]: to }))
     updatePipe.mutate({ id, patch: { stage: to } }, {
-      onSuccess: () => toast.success(`${row.full_name || row.handle} → ${stageLabel(to)}`),
+      onSuccess: () => { toast.success(`${row.full_name || row.handle} → ${stageLabel(to)}`); if (to === 'closed' && !wasClosed) enqueueClose([id]) },
       onError: () => { setOverrides(o => { const n = { ...o }; delete n[id]; return n }); toast.error('Move failed') },
     })
   }
@@ -107,8 +121,10 @@ function PipelineBoardInner() {
   const applyBulkStage = async () => {
     if (!bulkStage) return
     const ids = [...selected]
+    const closing = bulkStage === 'closed' ? ids : []
     await Promise.all(ids.map(id => updatePipe.mutateAsync({ id, patch: { stage: bulkStage } }).catch(() => null)))
     toast.success(`Moved ${ids.length} to ${stageLabel(bulkStage)}`); setSelected(new Set()); setBulkStage('')
+    if (closing.length) enqueueClose(closing)
   }
   const applyBulkReassign = async () => {
     if (!bulkMember) return
@@ -201,13 +217,16 @@ function PipelineBoardInner() {
             </div>
           )}
           <ListView rows={rows} isAdmin={isAdmin} selected={selected} onToggle={toggleSel} onOpen={setOpenHandle} onStage={(id, s) => {
+            const wasClosed = (allRows.find(r => r.id === id)?.stage) === 'closed'
             setOverrides(o => ({ ...o, [id]: s }))
-            updatePipe.mutate({ id, patch: { stage: s } }, { onSuccess: () => toast.success(`Moved to ${stageLabel(s)}`) })
+            updatePipe.mutate({ id, patch: { stage: s } }, { onSuccess: () => { toast.success(`Moved to ${stageLabel(s)}`); if (s === 'closed' && !wasClosed) enqueueClose([id]) } })
           }} />
         </div>
       )}
 
       <InfluencerDrawer influencerId={openHandle} onOpenChange={(o) => !o && setOpenHandle(null)} />
+
+      <CloseDealPrompt target={closeQueue[0] ?? null} onOpenChange={(o) => { if (!o) setCloseQueue(q => q.slice(1)) }} />
     </div>
   )
 }

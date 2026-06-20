@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { NicheChip, VerifiedTick } from '@/components/crm/badges'
+import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-prompt'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useInfluencer, useUpdatePipeline, useAddToPipeline, useRemoveFromPipeline, useReassign, useMembers, useTemplates, useComments, useAddComment, useDeleteComment, useCreateDeal, type AddToPipelineResult } from '@/lib/api'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
@@ -52,6 +53,7 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
   const { data: membersData } = useMembers()
   const members = membersData?.members ?? []
   const [conflict, setConflict] = useState<AddToPipelineResult['conflicts'][number] | null>(null)
+  const [closeTarget, setCloseTarget] = useState<CloseTarget | null>(null)
 
   const inf = data?.influencer as Inf | undefined
   const pipe: PipelineRow | undefined = data?.pipeline?.[0]
@@ -118,9 +120,13 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
                     <span className="text-xs text-muted-foreground">Stage</span>
                     <Select
                       value={pipe.stage}
-                      onChange={(e) => updatePipe.mutate({ id: pipe.id, patch: { stage: e.target.value } }, {
-                        onSuccess: () => toast.success(`Moved to ${stageLabel(e.target.value as Stage)}`),
-                      })}
+                      onChange={(e) => {
+                        const next = e.target.value as Stage
+                        const wasClosed = pipe.stage === 'closed'
+                        updatePipe.mutate({ id: pipe.id, patch: { stage: next } }, {
+                          onSuccess: () => { toast.success(`Moved to ${stageLabel(next)}`); if (next === 'closed' && !wasClosed) setCloseTarget({ pipelineId: pipe.id, handle: inf.handle, fullName: name }) },
+                        })
+                      }}
                       className="w-44"
                     >
                       {STAGES.map(s => <option key={s} value={s}>{stageLabel(s)}</option>)}
@@ -227,6 +233,8 @@ export function InfluencerDrawer({ influencerId, onOpenChange }: { influencerId:
           </div>
           {!isAdmin && <p className="mt-2 text-xs text-muted-foreground">Only an admin can reassign or duplicate this contact.</p>}
         </Modal>
+
+        <CloseDealPrompt target={closeTarget} onOpenChange={(o) => { if (!o) setCloseTarget(null) }} />
       </SheetContent>
     </Sheet>
   )

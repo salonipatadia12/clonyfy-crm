@@ -1139,6 +1139,13 @@ export async function createDeal(db: Db, profile: Profile, input: { handle?: str
   const pipe = candidates.find(r => r.assigned_to === profile.id) ?? candidates[0]
   if (profile.role !== 'admin' && pipe.assigned_to !== profile.id) throw new Error('forbidden')
 
+  // Idempotent: if a deal already exists for this pipeline row, return it rather
+  // than creating a duplicate. Lets the "you closed a lead → create the deal"
+  // prompt fire safely without ever doubling up.
+  const { data: existing } = await db.from('deals').select(DEAL_COLS)
+    .eq('workspace_id', profile.workspace_id).eq('pipeline_id', pipe.id).maybeSingle()
+  if (existing) return existing
+
   const { data, error } = await db.from('deals').insert({
     workspace_id: profile.workspace_id,
     pipeline_id: pipe.id,
