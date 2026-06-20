@@ -13,9 +13,9 @@ import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-p
 import { Skeleton } from '@/components/ui/skeleton'
 import { useInfluencer, useUpdatePipeline, useAddToPipeline, useRemoveFromPipeline, useReassign, useMembers, useTemplates, useComments, useAddComment, useDeleteComment, useCreateDeal, type AddToPipelineResult } from '@/lib/api'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
-import { STAGES, stageLabel, formatFollowers, formatNum, nicheLabel, safeUrl } from '@/lib/utils'
+import { STAGES, stageLabel, formatFollowers, formatNum, nicheLabel, safeUrl, cn } from '@/lib/utils'
 import type { PipelineRow, Stage, ActivityEvent } from '@/types/database'
-import { ExternalLink, Plus, History, Mail, Copy, Clock, Trash2, Film, Percent, Users, MessageSquare, Send, Handshake } from 'lucide-react'
+import { ExternalLink, Plus, History, Mail, Copy, Clock, Trash2, Film, Percent, Users, MessageSquare, Send, Handshake, CalendarClock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -275,9 +275,22 @@ function PipelineWork({ row, onPatch, onRemove }: {
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="h-3.5 w-3.5" /> Last touch</p>
-        <p className="text-sm">{row.last_touch ? formatDistanceToNow(new Date(row.last_touch), { addSuffix: true }) : 'No activity yet'}</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="h-3.5 w-3.5" /> Last touch</p>
+          <p className="text-sm">{row.last_touch ? formatDistanceToNow(new Date(row.last_touch), { addSuffix: true }) : 'No activity yet'}</p>
+        </div>
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CalendarClock className="h-3.5 w-3.5" /> Next follow-up</p>
+          <div className="flex items-center gap-1.5">
+            <Input type="date" defaultValue={row.next_follow_up ?? ''} key={`${row.id}-${row.next_follow_up ?? ''}`}
+              onChange={(e) => onPatch({ next_follow_up: e.target.value || null }, e.target.value ? 'Follow-up set' : 'Follow-up cleared')}
+              className={cn('h-8 text-xs', row.next_follow_up && row.next_follow_up <= new Date().toISOString().slice(0, 10) && 'border-amber-500/40 text-amber-400')} />
+            <button type="button" title="Follow up in a week"
+              onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); onPatch({ next_follow_up: d.toISOString().slice(0, 10) }, 'Follow-up set') }}
+              className="shrink-0 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:text-foreground">+1w</button>
+          </div>
+        </div>
       </div>
 
       <div>

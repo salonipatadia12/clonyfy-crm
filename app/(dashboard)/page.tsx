@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Users, Target, ArrowUpRight, Activity, Zap, Radio, Film, Mail, UserCog, AlertTriangle, Clock } from 'lucide-react'
+import { Users, Target, ArrowUpRight, Activity, Zap, Radio, Film, Mail, UserCog, AlertTriangle, Clock, CalendarClock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { StageBadge } from '@/components/crm/badges'
 import { useOverview } from '@/lib/api'
@@ -75,6 +75,34 @@ export default function DashboardPage() {
                 </div>
                 <StageBadge stage={c.stage} />
                 <span className="shrink-0 text-[11px] text-muted-foreground">{c.last_touch ? formatDistanceToNow(new Date(c.last_touch), { addSuffix: true }) : ''}</span>
+              </Link>
+            ))}
+          </div>
+        </motion.section>
+      )}
+
+      {/* Follow-ups due — scheduled next-touch dates that have arrived */}
+      {data.followUpsDue.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+          className="glass rounded-2xl border border-cyan-500/20 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <CalendarClock className="h-4 w-4 text-cyan-400" /> Follow-ups Due
+              <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs font-medium text-cyan-400">{data.followUpsDue.length}</span>
+            </h2>
+            <span className="text-xs text-muted-foreground">Scheduled for today or earlier</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {data.followUpsDue.map(c => (
+              <Link key={c.id} href={`/crm/influencers?open=${c.handle}`}
+                className="flex items-center gap-3 rounded-xl border border-border/50 bg-card/40 p-2.5 transition-colors hover:border-cyan-500/40">
+                <CalendarClock className="h-4 w-4 shrink-0 text-cyan-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{c.full_name || c.handle}</p>
+                  <p className="truncate text-xs text-muted-foreground">@{c.handle}{isAdmin && c.assigned_name ? ` · ${c.assigned_name}` : ''}</p>
+                </div>
+                <StageBadge stage={c.stage} />
+                <span className="shrink-0 text-[11px] text-muted-foreground">{c.next_follow_up ? formatDistanceToNow(new Date(c.next_follow_up), { addSuffix: true }) : ''}</span>
               </Link>
             ))}
           </div>

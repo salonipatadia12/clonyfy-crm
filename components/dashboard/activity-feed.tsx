@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ArrowRightLeft, Film, StickyNote, UserPlus, UserCheck, Trash2, Percent, Send } from 'lucide-react'
+import { ArrowRightLeft, Film, StickyNote, UserPlus, UserCheck, Trash2, Percent, Send, PenLine } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { formatDistanceToNow } from 'date-fns'
 import { stageLabel } from '@/lib/utils'
@@ -17,6 +17,8 @@ const META: Record<ActivityAction, { icon: typeof UserPlus; color: string }> = {
   reassigned:           { icon: Send, color: 'text-fuchsia-400 bg-fuchsia-500/15' },
   assigned:             { icon: UserCheck, color: 'text-blue-400 bg-blue-500/15' },
   removed_from_pipeline:{ icon: Trash2, color: 'text-rose-400 bg-rose-500/15' },
+  deal_signed:          { icon: PenLine, color: 'text-emerald-400 bg-emerald-500/15' },
+  deal_unsigned:        { icon: PenLine, color: 'text-slate-400 bg-slate-500/15' },
 }
 
 function label(e: ActivityEvent): string {
@@ -30,6 +32,8 @@ function label(e: ActivityEvent): string {
     case 'reassigned':            return 'reassigned'
     case 'assigned':              return 'assigned'
     case 'removed_from_pipeline': return 'removed from pipeline'
+    case 'deal_signed':           return 'signed the deal'
+    case 'deal_unsigned':         return 'reopened the agreement'
     default:                      return e.action
   }
 }

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
+import { SignedBadge } from '@/components/crm/badges'
 import { NewDealModal } from '@/components/crm/new-deal-modal'
 import { DealDrawer } from '@/components/crm/deal-drawer'
 import { formatNum, cn, downloadCsv } from '@/lib/utils'
@@ -93,7 +94,8 @@ export default function DealsPage() {
       { key: 'title', label: 'deal' }, { key: 'status', label: 'status' },
       { key: 'videos_posted', label: 'videos_posted' }, { key: 'videos_planned', label: 'videos_planned' },
       { key: 'total_views', label: 'total_views' }, { key: 'owner_name', label: 'owner' },
-      { key: 'created_by_name', label: 'created_by' }, { key: 'created_at', label: 'created_at' },
+      { key: 'created_by_name', label: 'created_by' }, { key: 'signed_at', label: 'signed_at' },
+      { key: 'created_at', label: 'created_at' },
     ])
     toast.success(`Exported ${rows.length} deal${rows.length > 1 ? 's' : ''}`)
   }
@@ -184,6 +186,7 @@ export default function DealsPage() {
                   <th className="px-3 py-3 text-center">Videos</th>
                   <th className="px-3 py-3 text-right">Views</th>
                   <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Signed</th>
                   <th className="px-3 py-3">Created</th>
                 </tr>
               </thead>
@@ -204,11 +207,13 @@ export default function DealsPage() {
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">{deal.created_by === me.id ? 'You' : (deal.created_by_name || '—')}</td>
                     <td className="px-3 py-2.5 text-center tabular-nums">
                       <span className="inline-flex items-center gap-1"><Film className="h-3.5 w-3.5 text-cyan-400" /> {deal.videos_posted}/{deal.videos_planned}</span>
+                      {!!deal.overdue && <span className="ml-1 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">{deal.overdue} overdue</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatNum(deal.total_views)}</td>
                     <td className="px-3 py-2.5">
                       <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium capitalize', STATUS_STYLE[deal.status])}>{deal.status}</span>
                     </td>
+                    <td className="px-3 py-2.5"><SignedBadge signedAt={deal.signed_at} /></td>
                     <td className="px-3 py-2.5 text-muted-foreground">{formatDistanceToNow(new Date(deal.created_at), { addSuffix: true })}</td>
                   </tr>
                 ))}

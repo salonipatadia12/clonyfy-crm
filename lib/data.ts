@@ -45,6 +45,8 @@ function activityMessage(actorName: string, entry: {
     case 'commission_set':       return `${actorName} set terms on ${who}`
     case 'reassigned':           return `${actorName} reassigned ${who}${m.to ? ` to ${m.to}` : ''}`
     case 'assigned':             return `${actorName} assigned ${who}${m.to ? ` to ${m.to}` : ''}`
+    case 'deal_signed':          return `${actorName} signed the deal with ${who}`
+    case 'deal_unsigned':        return `${actorName} reopened the agreement for ${who}`
     default:                     return `${actorName} updated ${who}`
   }
 }
@@ -419,6 +421,20 @@ export async function updatePipeline(db: Db, profile: Profile, id: string, patch
       logs.push({ action: 'commission_set', metadata: { type: next } })
     }
   }
+  if ('next_follow_up' in patch) {
+    const next = patch.next_follow_up ? String(patch.next_follow_up) : null
+    if (next !== cur.next_follow_up) set.next_follow_up = next
+  }
+  if ('campaign_id' in patch) {
+    const cid = patch.campaign_id ? String(patch.campaign_id) : null
+    if (cid !== cur.campaign_id) {
+      if (cid) {
+        const { data: camp } = await db.from('campaigns').select('id').eq('workspace_id', profile.workspace_id).eq('id', cid).maybeSingle()
+        if (!camp) throw new Error('campaign not found')
+      }
+      set.campaign_id = cid
+    }
+  }
 
   // No real change → don't reset the staleness timer.
   if (Object.keys(set).length === 0) return cur as PipelineRow
@@ -453,7 +469,7 @@ export async function removeFromPipeline(db: Db, profile: Profile, id: string) {
 // ---- KPIs / overview / analytics -------------------------------------------
 
 async function pipelineRowsForScope(db: Db, profile: Profile) {
-  let q = db.from('pipeline').select('id, handle, full_name, stage, niche, country, reel_url, assigned_to, assigned_name, added_at, last_touch').eq('workspace_id', profile.workspace_id)
+  let q = db.from('pipeline').select('id, handle, full_name, stage, niche, country, reel_url, assigned_to, assigned_name, added_at, last_touch, next_follow_up').eq('workspace_id', profile.workspace_id)
   if (profile.role !== 'admin') q = q.eq('assigned_to', profile.id)
   const { data } = await q
   return data ?? []
@@ -468,6 +484,17 @@ function needsAttention(pipe: Awaited<ReturnType<typeof pipelineRowsForScope>>) 
     .sort((a, b) => new Date(a.last_touch!).getTime() - new Date(b.last_touch!).getTime())
     .slice(0, 8)
     .map(r => ({ id: r.id, handle: r.handle, full_name: r.full_name, stage: r.stage as Stage, last_touch: r.last_touch, assigned_name: r.assigned_name }))
+}
+
+// Scheduled follow-ups due today or earlier (skip closed/live/completed/archived).
+const FOLLOWUP_SKIP: Stage[] = ['closed', 'live', 'completed', 'archived']
+function followUpsDue(pipe: Awaited<ReturnType<typeof pipelineRowsForScope>>) {
+  const today = new Date().toISOString().slice(0, 10)
+  return pipe
+    .filter(r => r.next_follow_up && r.next_follow_up <= today && !FOLLOWUP_SKIP.includes(r.stage as Stage))
+    .sort((a, b) => (a.next_follow_up! < b.next_follow_up! ? -1 : 1))
+    .slice(0, 8)
+    .map(r => ({ id: r.id, handle: r.handle, full_name: r.full_name, stage: r.stage as Stage, next_follow_up: r.next_follow_up, assigned_name: r.assigned_name }))
 }
 
 export async function getStats(db: Db, profile: Profile): Promise<StatsResponse> {
@@ -538,6 +565,7 @@ export async function getOverview(db: Db, profile: Profile): Promise<OverviewRes
     deltas: { activity: pct, activity7: act7 },
     feed: activity.slice(0, 20),
     needsAttention: needsAttention(pipe),
+    followUpsDue: followUpsDue(pipe),
   }
 }
 
@@ -1057,7 +1085,9 @@ export async function setMemberGoal(db: Db, profile: Profile, memberId: string, 
 
 // ---- Deals (collaborations tracked by video deliverables; no money) ---------
 
-const DEAL_COLS = 'id, pipeline_id, handle, influencer_name, owner_id, created_by, title, status, videos_planned, notes, created_at, updated_at'
+const DEAL_COLS = 'id, pipeline_id, handle, influencer_name, owner_id, created_by, title, status, signed_at, agreement_url, campaign_id, videos_planned, notes, created_at, updated_at'
+const DEAL_VIDEO_COLS = 'id, deal_id, title, url, views, likes, comments, posted_at, due_date, approval_status, created_at'
+const VALID_APPROVAL = new Set(['planned', 'submitted', 'approved', 'posted'])
 
 // Admins see the whole workspace's deals; members see the ones they own.
 export async function listDeals(db: Db, profile: Profile) {
@@ -1067,15 +1097,19 @@ export async function listDeals(db: Db, profile: Profile) {
   if (error) throw new Error(error.message)
   const rows = deals ?? []
 
-  const [{ data: vids }, { data: users }] = await Promise.all([
-    db.from('deal_videos').select('deal_id, views').eq('workspace_id', profile.workspace_id),
+  const [{ data: vids }, { data: users }, { data: camps }] = await Promise.all([
+    db.from('deal_videos').select('deal_id, views, due_date, approval_status').eq('workspace_id', profile.workspace_id),
     db.from('users').select('id, name').eq('workspace_id', profile.workspace_id),
+    db.from('campaigns').select('id, name').eq('workspace_id', profile.workspace_id),
   ])
   const userName = new Map((users ?? []).map(u => [u.id, u.name]))
-  const agg = new Map<string, { posted: number; views: number }>()
+  const campName = new Map((camps ?? []).map(c => [c.id, c.name]))
+  const today = new Date().toISOString().slice(0, 10)
+  const agg = new Map<string, { posted: number; views: number; overdue: number }>()
   for (const v of vids ?? []) {
-    const a = agg.get(v.deal_id) ?? { posted: 0, views: 0 }
+    const a = agg.get(v.deal_id) ?? { posted: 0, views: 0, overdue: 0 }
     a.posted += 1; a.views += v.views ?? 0
+    if (v.due_date && v.due_date <= today && v.approval_status !== 'posted') a.overdue += 1
     agg.set(v.deal_id, a)
   }
 
@@ -1083,8 +1117,10 @@ export async function listDeals(db: Db, profile: Profile) {
     ...d,
     owner_name: d.owner_id ? (userName.get(d.owner_id) ?? null) : null,
     created_by_name: d.created_by ? (userName.get(d.created_by) ?? null) : null,
+    campaign_name: d.campaign_id ? (campName.get(d.campaign_id) ?? null) : null,
     videos_posted: agg.get(d.id)?.posted ?? 0,
     total_views: agg.get(d.id)?.views ?? 0,
+    overdue: agg.get(d.id)?.overdue ?? 0,
   }))
 
   const stats = {
@@ -1102,10 +1138,11 @@ export async function getDeal(db: Db, profile: Profile, id: string) {
   const { data: d } = await db.from('deals').select(DEAL_COLS).eq('workspace_id', profile.workspace_id).eq('id', id).maybeSingle()
   if (!d) throw new Error('deal not found')
   if (profile.role !== 'admin' && d.owner_id !== profile.id) throw new Error('forbidden')
-  const [{ data: vids }, { data: people }] = await Promise.all([
-    db.from('deal_videos').select('id, deal_id, title, url, views, likes, comments, posted_at, created_at')
+  const [{ data: vids }, { data: people }, { data: camp }] = await Promise.all([
+    db.from('deal_videos').select(DEAL_VIDEO_COLS)
       .eq('workspace_id', profile.workspace_id).eq('deal_id', id).order('created_at', { ascending: true }),
     db.from('users').select('id, name').eq('workspace_id', profile.workspace_id),
+    d.campaign_id ? db.from('campaigns').select('name').eq('workspace_id', profile.workspace_id).eq('id', d.campaign_id).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const nameOf = new Map((people ?? []).map(u => [u.id, u.name]))
   const videos = vids ?? []
@@ -1113,6 +1150,7 @@ export async function getDeal(db: Db, profile: Profile, id: string) {
     ...d,
     owner_name: d.owner_id ? (nameOf.get(d.owner_id) ?? null) : null,
     created_by_name: d.created_by ? (nameOf.get(d.created_by) ?? null) : null,
+    campaign_name: (camp as { name?: string } | null)?.name ?? null,
     videos,
     videos_posted: videos.length,
     total_views: videos.reduce((s, v) => s + (v.views ?? 0), 0),
@@ -1162,7 +1200,7 @@ export async function createDeal(db: Db, profile: Profile, input: { handle?: str
 }
 
 export async function updateDeal(db: Db, profile: Profile, id: string, patch: Record<string, unknown>) {
-  const { data: cur } = await db.from('deals').select('owner_id').eq('workspace_id', profile.workspace_id).eq('id', id).maybeSingle()
+  const { data: cur } = await db.from('deals').select('owner_id, handle, influencer_name, signed_at, campaign_id').eq('workspace_id', profile.workspace_id).eq('id', id).maybeSingle()
   if (!cur) throw new Error('deal not found')
   if (profile.role !== 'admin' && cur.owner_id !== profile.id) throw new Error('forbidden')
   const set: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -1170,8 +1208,27 @@ export async function updateDeal(db: Db, profile: Profile, id: string, patch: Re
   if (patch.status === 'active' || patch.status === 'completed' || patch.status === 'cancelled') set.status = patch.status
   if (patch.videos_planned != null) set.videos_planned = Math.max(0, Math.floor(Number(patch.videos_planned)))
   if ('notes' in patch) set.notes = patch.notes ? String(patch.notes) : null
+  // Signing — a boolean flag from the client; the server owns the timestamp.
+  let signTransition: 'signed' | 'unsigned' | null = null
+  if ('signed' in patch) {
+    if (patch.signed) { set.signed_at = cur.signed_at ?? new Date().toISOString(); if (!cur.signed_at) signTransition = 'signed' }
+    else { set.signed_at = null; if (cur.signed_at) signTransition = 'unsigned' }
+  }
+  if ('agreement_url' in patch) set.agreement_url = patch.agreement_url ? String(patch.agreement_url).trim() : null
+  // Campaign tagging (validate the campaign belongs to this workspace).
+  if ('campaign_id' in patch) {
+    const cid = patch.campaign_id ? String(patch.campaign_id) : null
+    if (cid) {
+      const { data: camp } = await db.from('campaigns').select('id').eq('workspace_id', profile.workspace_id).eq('id', cid).maybeSingle()
+      if (!camp) throw new Error('campaign not found')
+    }
+    set.campaign_id = cid
+  }
   const { data, error } = await db.from('deals').update(set).eq('workspace_id', profile.workspace_id).eq('id', id).select(DEAL_COLS).single()
   if (error) throw new Error(error.message)
+  if (signTransition) {
+    await logActivity(db, profile, { action: signTransition === 'signed' ? 'deal_signed' : 'deal_unsigned', profile_handle: cur.handle, profile_name: cur.influencer_name })
+  }
   return data
 }
 
@@ -1190,7 +1247,7 @@ async function assertDealAccess(db: Db, profile: Profile, dealId: string) {
   if (profile.role !== 'admin' && d.owner_id !== profile.id) throw new Error('forbidden')
 }
 
-export async function addDealVideo(db: Db, profile: Profile, dealId: string, input: { url?: string; title?: string; views?: number; likes?: number; comments?: number; posted_at?: string }) {
+export async function addDealVideo(db: Db, profile: Profile, dealId: string, input: { url?: string; title?: string; views?: number; likes?: number; comments?: number; posted_at?: string; due_date?: string; approval_status?: string }) {
   await assertDealAccess(db, profile, dealId)
   const num = (v: unknown) => (v == null || v === '' ? null : Math.max(0, Math.floor(Number(v))))
   const { data, error } = await db.from('deal_videos').insert({
@@ -1199,7 +1256,9 @@ export async function addDealVideo(db: Db, profile: Profile, dealId: string, inp
     url: input.url?.trim() || null,
     views: num(input.views), likes: num(input.likes), comments: num(input.comments),
     posted_at: input.posted_at || null,
-  }).select('id, deal_id, title, url, views, likes, comments, posted_at, created_at').single()
+    due_date: input.due_date || null,
+    approval_status: VALID_APPROVAL.has(input.approval_status ?? '') ? input.approval_status : 'planned',
+  }).select(DEAL_VIDEO_COLS).single()
   if (error) throw new Error(error.message)
   return data
 }
@@ -1216,8 +1275,10 @@ export async function updateDealVideo(db: Db, profile: Profile, videoId: string,
   if ('likes' in patch) set.likes = num(patch.likes)
   if ('comments' in patch) set.comments = num(patch.comments)
   if ('posted_at' in patch) set.posted_at = patch.posted_at ? String(patch.posted_at) : null
+  if ('due_date' in patch) set.due_date = patch.due_date ? String(patch.due_date) : null
+  if ('approval_status' in patch && VALID_APPROVAL.has(String(patch.approval_status))) set.approval_status = patch.approval_status
   const { data, error } = await db.from('deal_videos').update(set).eq('workspace_id', profile.workspace_id).eq('id', videoId)
-    .select('id, deal_id, title, url, views, likes, comments, posted_at, created_at').single()
+    .select(DEAL_VIDEO_COLS).single()
   if (error) throw new Error(error.message)
   return data
 }

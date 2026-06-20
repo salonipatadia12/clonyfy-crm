@@ -57,11 +57,15 @@ export interface PipelineRow {
   commission_type: CommissionType | null
   commission_percentage: number | null
   commission_flat: string | null
+  next_follow_up: string | null
+  campaign_id: string | null
+  campaign_name?: string | null
 }
 
 export type ActivityAction =
   | 'added_to_pipeline' | 'stage_changed' | 'reel_url_added' | 'notes_updated'
   | 'commission_set' | 'reassigned' | 'assigned' | 'removed_from_pipeline'
+  | 'deal_signed' | 'deal_unsigned'
 
 export interface ActivityEvent {
   id: string
@@ -165,11 +169,21 @@ export interface NeedsAttentionRow {
   assigned_name: string | null
 }
 
+export interface FollowUpRow {
+  id: string
+  handle: string
+  full_name: string | null
+  stage: Stage
+  next_follow_up: string | null
+  assigned_name: string | null
+}
+
 export interface OverviewResponse extends StatsResponse {
   series: { date: string; activity: number }[]
   deltas: { activity: number; activity7: number }
   feed: ActivityEvent[]
   needsAttention: NeedsAttentionRow[]
+  followUpsDue: FollowUpRow[]
 }
 
 export interface AnalyticsResponse {
@@ -183,6 +197,7 @@ export interface AnalyticsResponse {
 
 // ---- Deals (collaborations tracked by video deliverables; no money) ---------
 export type DealStatus = 'active' | 'completed' | 'cancelled'
+export type ApprovalStatus = 'planned' | 'submitted' | 'approved' | 'posted'
 
 export interface DealVideo {
   id: string
@@ -193,6 +208,8 @@ export interface DealVideo {
   likes: number | null
   comments: number | null
   posted_at: string | null
+  due_date: string | null
+  approval_status: ApprovalStatus
   created_at: string
 }
 
@@ -207,6 +224,10 @@ export interface Deal {
   created_by_name: string | null
   title: string
   status: DealStatus
+  signed_at: string | null
+  agreement_url: string | null
+  campaign_id: string | null
+  campaign_name?: string | null
   videos_planned: number
   notes: string | null
   created_at: string
@@ -214,6 +235,7 @@ export interface Deal {
   // aggregates (computed):
   videos_posted: number
   total_views: number
+  overdue?: number
 }
 
 export interface DealDetail extends Deal {
@@ -232,4 +254,29 @@ export interface DealsStats {
 export interface DealsResponse {
   deals: Deal[]
   stats: DealsStats
+}
+
+// ---- Campaigns (client/brand engagements grouping creators + deals) ---------
+export type CampaignStatus = 'planning' | 'active' | 'completed' | 'archived'
+
+export interface Campaign {
+  id: string
+  name: string
+  client: string | null
+  brief: string | null
+  status: CampaignStatus
+  start_date: string | null
+  end_date: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // aggregates (computed):
+  pipeline_count: number
+  deal_count: number
+  signed_count: number
+}
+
+export interface CampaignDetail extends Campaign {
+  pipeline: PipelineRow[]
+  deals: Deal[]
 }
