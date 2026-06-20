@@ -1,7 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getProfile, type Profile } from '@/lib/auth'
-import { ADVANCED_STAGES } from '@/lib/utils'
+import { ADVANCED_STAGES, stageLabel } from '@/lib/utils'
 import { discoverHandles, enrichProfiles, apifyEnabled, remainingBudgetUsd, isLikelyUS, isFashion } from '@/lib/apify'
 import type {
   Influencer, PipelineRow, Stage, ActivityAction, ActivityEvent,
@@ -22,6 +22,33 @@ type Db = ReturnType<typeof createAdminClient>
 
 // ---- Activity log -----------------------------------------------------------
 
+// Notify every admin in the workspace (except the actor) — used to keep admins
+// looped in on what their team is doing.
+export async function notifyAdmins(db: Db, profile: Profile, message: string, type = 'activity') {
+  const { data: admins } = await db.from('users').select('id')
+    .eq('workspace_id', profile.workspace_id).eq('role', 'admin').neq('id', profile.id)
+  for (const a of admins ?? []) await createNotification(db, profile.workspace_id, a.id, message, type)
+}
+
+// Plain-English phrasing of an activity event, from the actor's perspective.
+function activityMessage(actorName: string, entry: {
+  action: ActivityAction; profile_handle?: string | null; metadata?: Record<string, unknown> | null
+}): string {
+  const who = `@${entry.profile_handle ?? 'a creator'}`
+  const m = entry.metadata ?? {}
+  switch (entry.action) {
+    case 'added_to_pipeline':   return `${actorName} added ${who} to the pipeline`
+    case 'removed_from_pipeline':return `${actorName} removed ${who} from the pipeline`
+    case 'stage_changed':       return `${actorName} moved ${who} to ${stageLabel((m.to as Stage) ?? null)}`
+    case 'reel_url_added':       return `${actorName} added a reel link for ${who}`
+    case 'notes_updated':        return `${actorName} updated notes on ${who}`
+    case 'commission_set':       return `${actorName} set terms on ${who}`
+    case 'reassigned':           return `${actorName} reassigned ${who}${m.to ? ` to ${m.to}` : ''}`
+    case 'assigned':             return `${actorName} assigned ${who}${m.to ? ` to ${m.to}` : ''}`
+    default:                     return `${actorName} updated ${who}`
+  }
+}
+
 export async function logActivity(db: Db, profile: Profile, entry: {
   action: ActivityAction
   profile_handle?: string | null
@@ -37,6 +64,11 @@ export async function logActivity(db: Db, profile: Profile, entry: {
     action: entry.action,
     metadata: entry.metadata ?? null,
   })
+  // Keep admins informed of everything their team members do. Admin actions are
+  // not fanned out (admins already see the full activity feed + audit trail).
+  if (profile.role === 'member') {
+    await notifyAdmins(db, profile, activityMessage(profile.name, entry), 'activity')
+  }
 }
 
 export async function listActivity(
@@ -396,6 +428,11 @@ export async function updatePipeline(db: Db, profile: Profile, id: string, patch
     .eq('workspace_id', profile.workspace_id).eq('id', id).select().single()
   if (error) throw new Error(error.message)
   for (const l of logs) await logActivity(db, profile, { ...l, profile_handle: cur.handle, profile_name: cur.full_name })
+  // If someone (e.g. an admin) edited a creator owned by another member, let the
+  // owner know their record changed.
+  if (cur.assigned_to && cur.assigned_to !== profile.id && logs.length) {
+    await createNotification(db, profile.workspace_id, cur.assigned_to, activityMessage(profile.name, { ...logs[0], profile_handle: cur.handle }), 'activity')
+  }
   return updated as PipelineRow
 }
 
@@ -406,6 +443,10 @@ export async function removeFromPipeline(db: Db, profile: Profile, id: string) {
   const { error } = await db.from('pipeline').delete().eq('workspace_id', profile.workspace_id).eq('id', id)
   if (error) throw new Error(error.message)
   await logActivity(db, profile, { action: 'removed_from_pipeline', profile_handle: cur.handle, profile_name: cur.full_name })
+  // Removing a creator someone else was working → tell that member.
+  if (cur.assigned_to && cur.assigned_to !== profile.id) {
+    await createNotification(db, profile.workspace_id, cur.assigned_to, `${profile.name} removed @${cur.handle} from your pipeline`, 'activity')
+  }
   return { ok: true }
 }
 
