@@ -16,9 +16,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { VerifiedTick } from '@/components/crm/badges'
 import { InfluencerDrawer } from '@/components/crm/influencer-drawer'
 import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-prompt'
-import { STAGES, STAGE_HEX, STAGE_COLORS, ADVANCED_STAGES, stageLabel, formatFollowers, nicheLabel, safeUrl, cn } from '@/lib/utils'
+import { STAGES, STAGE_HEX, STAGE_COLORS, ADVANCED_STAGES, stageLabel, formatFollowers, nicheLabel, safeUrl, cn, downloadCsv } from '@/lib/utils'
 import type { PipelineRow, Stage } from '@/types/database'
-import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog, Trash2 } from 'lucide-react'
+import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog, Trash2, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COLUMN_CAP = 60
@@ -143,6 +143,16 @@ function PipelineBoardInner() {
     await Promise.all(ids.map(id => removePipe.mutateAsync(id).catch(() => null)))
     toast.success(`Removed ${ids.length} from pipeline`); setSelected(new Set())
   }
+  const exportSelected = () => {
+    const picked = (selected.size ? rows.filter(r => selected.has(r.id)) : rows).map(r => ({ ...r, stage: stageLabel(stageOf(r)) }))
+    downloadCsv('clonyfy-pipeline.csv', picked as unknown as Record<string, unknown>[], [
+      { key: 'handle', label: 'handle' }, { key: 'full_name', label: 'name' },
+      { key: 'stage', label: 'stage' }, { key: 'assigned_name', label: 'owner' },
+      { key: 'follower_count', label: 'followers' }, { key: 'niche', label: 'niche' },
+      { key: 'country', label: 'country' }, { key: 'last_touch', label: 'last_touch' },
+    ])
+    toast.success(`Exported ${picked.length} row${picked.length > 1 ? 's' : ''}`)
+  }
 
   return (
     <div className="space-y-4">
@@ -221,6 +231,7 @@ function PipelineBoardInner() {
                   <Button size="sm" variant="ghost" className="border border-border" onClick={applyBulkReassign} disabled={!bulkMember || reassign.isPending}><UserCog className="mr-1 h-4 w-4" /> Reassign</Button>
                 </div>
               )}
+              <Button size="sm" variant="ghost" className="border border-border" onClick={exportSelected}><Download className="mr-1 h-4 w-4" /> Export</Button>
               <Button size="sm" variant="ghost" className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={applyBulkRemove} disabled={removePipe.isPending}><Trash2 className="mr-1 h-4 w-4" /> Remove</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
             </div>

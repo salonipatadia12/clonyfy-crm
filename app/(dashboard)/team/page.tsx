@@ -9,7 +9,8 @@ import { Select } from '@/components/ui/select'
 import { Avatar } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Modal } from '@/components/ui/modal'
-import { UserPlus, Trash2, Copy, ShieldCheck } from 'lucide-react'
+import { UserPlus, Trash2, Copy, ShieldCheck, Check, Target } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -19,12 +20,15 @@ export default function TeamPage() {
   const { data: analytics } = useAnalytics()
   const invite = useInviteMember()
   const remove = useRemoveMember()
+  const setGoal = useSetMemberGoal()
 
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'member' | 'admin'>('member')
   const [invited, setInvited] = useState<{ email: string; pw: string | null; link: string | null } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkGoal, setBulkGoal] = useState('')
 
   if (!isAdmin) {
     return <div className="glass rounded-2xl p-10 text-center text-sm text-muted-foreground">This page is for admins only.</div>
@@ -33,6 +37,29 @@ export default function TeamPage() {
   const members = data?.members ?? []
   const reassignments = data?.reassignments ?? []
   const statById = new Map((analytics?.members ?? []).map(m => [m.id, m]))
+  // Only non-admin members are selectable (goals + removal apply to reps).
+  const selectableMembers = members.filter(m => m.role !== 'admin')
+  const allSelected = selectableMembers.length > 0 && selectableMembers.every(m => selected.has(m.id))
+  const toggleAll = () => {
+    const next = new Set(selected)
+    if (allSelected) selectableMembers.forEach(m => next.delete(m.id)); else selectableMembers.forEach(m => next.add(m.id))
+    setSelected(next)
+  }
+  const toggleRow = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const applyBulkGoal = async () => {
+    const goal = Number(bulkGoal)
+    const ids = [...selected]
+    if (!ids.length || !Number.isFinite(goal)) return
+    await Promise.all(ids.map(id => setGoal.mutateAsync({ id, goal }).catch(() => null)))
+    toast.success(`Set goal ${goal} for ${ids.length} member${ids.length > 1 ? 's' : ''}`); setSelected(new Set()); setBulkGoal('')
+  }
+  const applyBulkRemove = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (!window.confirm(`Remove ${ids.length} member${ids.length > 1 ? 's' : ''}? Their pipelines move to you.`)) return
+    await Promise.all(ids.map(id => remove.mutateAsync(id).catch(() => null)))
+    toast.success(`Removed ${ids.length} member${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
+  }
 
   const submit = () => {
     if (!name.trim() || !email.trim()) { toast.error('Name and email required'); return }
@@ -56,11 +83,30 @@ export default function TeamPage() {
         <Button onClick={() => setOpen(true)}><UserPlus className="mr-1.5 h-4 w-4" /> Add member</Button>
       </header>
 
+      {selected.size > 0 && (
+        <div className="glass-strong flex flex-wrap items-center gap-3 rounded-xl border-primary/30 p-3">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <div className="flex items-center gap-1.5">
+            <Target className="h-4 w-4 text-muted-foreground" />
+            <Input value={bulkGoal} onChange={(e) => setBulkGoal(e.target.value)} type="number" min={0} placeholder="Monthly goal" className="h-9 w-32" />
+            <Button size="sm" onClick={applyBulkGoal} disabled={!bulkGoal || setGoal.isPending}>Set goal</Button>
+          </div>
+          <Button size="sm" variant="ghost" onClick={applyBulkRemove} disabled={remove.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Remove</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
+
       <div className="glass overflow-hidden rounded-2xl">
         {isLoading ? <Skeleton className="h-48 w-full" /> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="w-10 px-4 py-3">
+                  <button onClick={toggleAll} title="Select all members"
+                    className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', allSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
+                    {allSelected && <Check className="h-3 w-3" />}
+                  </button>
+                </th>
                 <th className="px-4 py-3">Member</th>
                 <th className="px-3 py-3">Role</th>
                 <th className="px-3 py-3">Status</th>
@@ -76,7 +122,15 @@ export default function TeamPage() {
               {members.map(m => {
                 const s = statById.get(m.id)
                 return (
-                  <tr key={m.id} className="border-b border-border/40 hover:bg-muted/30">
+                  <tr key={m.id} className={cn('border-b border-border/40 hover:bg-muted/30', selected.has(m.id) && 'bg-primary/5')}>
+                    <td className="px-4 py-3">
+                      {m.role !== 'admin' && (
+                        <button onClick={() => toggleRow(m.id)} title="Select"
+                          className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', selected.has(m.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
+                          {selected.has(m.id) && <Check className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar name={m.name} size={34} />

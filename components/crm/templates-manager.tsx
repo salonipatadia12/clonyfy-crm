@@ -5,7 +5,8 @@ import { useTemplates, useCreateTemplate, useDeleteTemplate } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
-import { FileText, Plus, Trash2, Copy } from 'lucide-react'
+import { FileText, Plus, Trash2, Copy, Check } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export function TemplatesManager() {
@@ -17,7 +18,16 @@ export function TemplatesManager() {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [preview, setPreview] = useState<{ name: string; subject?: string | null; body: string } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const templates = data?.templates ?? []
+  const toggle = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const bulkDelete = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (!window.confirm(`Delete ${ids.length} template${ids.length > 1 ? 's' : ''}?`)) return
+    await Promise.all(ids.map(id => del.mutateAsync(id).catch(() => null)))
+    toast.success(`Deleted ${ids.length} template${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
+  }
 
   const submit = () => {
     if (!name.trim() || !body.trim()) { toast.error('Name and body required'); return }
@@ -34,14 +44,23 @@ export function TemplatesManager() {
           <h2 className="flex items-center gap-2 text-base font-semibold"><FileText className="h-4 w-4" /> DM Templates</h2>
           <p className="text-xs text-muted-foreground">Shared across the workspace. Click a template to preview it.</p>
         </div>
-        <Button size="sm" onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4" /> New template</Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button size="sm" variant="ghost" onClick={bulkDelete} disabled={del.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Delete ({selected.size})</Button>
+          )}
+          <Button size="sm" onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4" /> New template</Button>
+        </div>
       </div>
       {templates.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No templates yet — the drawer falls back to built-in defaults until you add some.</p>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {templates.map(t => (
-            <div key={t.id} className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5">
+            <div key={t.id} className={cn('flex items-start gap-2.5 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5', selected.has(t.id) && 'border-primary/40 bg-primary/5')}>
+              <button onClick={() => toggle(t.id)} title="Select"
+                className={cn('mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors', selected.has(t.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
+                {selected.has(t.id) && <Check className="h-3 w-3" />}
+              </button>
               <button onClick={() => setPreview(t)} className="min-w-0 flex-1 text-left">
                 <p className="text-sm font-medium hover:text-primary">{t.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{t.body}</p>

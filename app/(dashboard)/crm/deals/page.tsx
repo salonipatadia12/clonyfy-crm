@@ -13,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { NewDealModal } from '@/components/crm/new-deal-modal'
 import { DealDrawer } from '@/components/crm/deal-drawer'
-import { formatNum, cn } from '@/lib/utils'
+import { formatNum, cn, downloadCsv } from '@/lib/utils'
+import { Download } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import type { Deal } from '@/types/database'
 
@@ -85,6 +86,17 @@ export default function DealsPage() {
     await Promise.all(ids.map(id => deleteDeal.mutateAsync(id).catch(() => null)))
     toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
   }
+  const exportSelected = () => {
+    const rows = (selected.size ? deals.filter(d => selected.has(d.id)) : deals) as unknown as Record<string, unknown>[]
+    downloadCsv('clonyfy-deals.csv', rows, [
+      { key: 'handle', label: 'handle' }, { key: 'influencer_name', label: 'creator' },
+      { key: 'title', label: 'deal' }, { key: 'status', label: 'status' },
+      { key: 'videos_posted', label: 'videos_posted' }, { key: 'videos_planned', label: 'videos_planned' },
+      { key: 'total_views', label: 'total_views' }, { key: 'owner_name', label: 'owner' },
+      { key: 'created_by_name', label: 'created_by' }, { key: 'created_at', label: 'created_at' },
+    ])
+    toast.success(`Exported ${rows.length} deal${rows.length > 1 ? 's' : ''}`)
+  }
 
   return (
     <div className="space-y-6">
@@ -146,6 +158,7 @@ export default function DealsPage() {
               </Select>
               <Button size="sm" onClick={applyBulkStatus} disabled={!bulkStatus || updateDeal.isPending}>Apply</Button>
             </div>
+            <Button size="sm" variant="ghost" onClick={exportSelected} className="border border-border"><Download className="mr-1 h-4 w-4" /> Export</Button>
             <Button size="sm" variant="ghost" onClick={applyBulkDelete} disabled={deleteDeal.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>

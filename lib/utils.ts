@@ -72,6 +72,20 @@ export const nicheLabel = (n: string | null | undefined) =>
 
 export const NICHE_HEX = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#a3e635']
 
+// CSV export — agencies live in client decks/spreadsheets. Shared so Influencers,
+// Pipeline, and Deals all export the same safe way (formula-injection guarded).
+export function downloadCsv(filename: string, rows: Record<string, unknown>[], cols: { key: string; label?: string }[]) {
+  const esc = (v: unknown) => {
+    const cell = String(v ?? '').replace(/"/g, '""')
+    const safe = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell
+    return /[",\n]/.test(safe) ? `"${safe}"` : safe
+  }
+  const head = cols.map(c => c.label ?? c.key).join(',')
+  const body = rows.map(r => cols.map(c => esc(r[c.key])).join(',')).join('\n')
+  const url = URL.createObjectURL(new Blob([head + '\n' + body], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
+}
+
 export function formatFollowers(n: number | null): string {
   if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
