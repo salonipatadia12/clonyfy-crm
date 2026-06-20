@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Handshake, Film, TrendingUp, Clock, Search, Plus, ArrowUp, ArrowDown } from 'lucide-react'
-import { useDeals } from '@/lib/api'
+import { Handshake, Film, TrendingUp, Clock, Search, Plus, ArrowUp, ArrowDown, Check, Trash2 } from 'lucide-react'
+import { useDeals, useUpdateDeal, useDeleteDeal } from '@/lib/api'
+import { toast } from 'sonner'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
@@ -33,6 +34,10 @@ export default function DealsPage() {
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [newOpen, setNewOpen] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkStatus, setBulkStatus] = useState('')
+  const updateDeal = useUpdateDeal()
+  const deleteDeal = useDeleteDeal()
 
   const creators = useMemo(() => {
     const seen = new Map<string, string>()
@@ -58,6 +63,28 @@ export default function DealsPage() {
   }, [data, filter, ownerFilter, me.id, search, sort, order])
 
   const s = data?.stats
+
+  const allSelected = deals.length > 0 && deals.every(d => selected.has(d.id))
+  const toggleAll = () => {
+    const next = new Set(selected)
+    if (allSelected) deals.forEach(d => next.delete(d.id)); else deals.forEach(d => next.add(d.id))
+    setSelected(next)
+  }
+  const toggleRow = (id: string) => { const next = new Set(selected); next.has(id) ? next.delete(id) : next.add(id); setSelected(next) }
+
+  const applyBulkStatus = async () => {
+    if (!bulkStatus) return
+    const ids = [...selected]
+    await Promise.all(ids.map(id => updateDeal.mutateAsync({ id, patch: { status: bulkStatus } }).catch(() => null)))
+    toast.success(`Updated ${ids.length} deal${ids.length > 1 ? 's' : ''}`); setSelected(new Set()); setBulkStatus('')
+  }
+  const applyBulkDelete = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (!window.confirm(`Delete ${ids.length} deal${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return
+    await Promise.all(ids.map(id => deleteDeal.mutateAsync(id).catch(() => null)))
+    toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
+  }
 
   return (
     <div className="space-y-6">
@@ -107,6 +134,23 @@ export default function DealsPage() {
           </Button>
         </div>
 
+        {selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-primary/30 bg-primary/5 p-3">
+            <span className="text-sm font-medium">{selected.size} selected</span>
+            <div className="flex items-center gap-1.5">
+              <Select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="h-9 w-40">
+                <option value="">Set status…</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </Select>
+              <Button size="sm" onClick={applyBulkStatus} disabled={!bulkStatus || updateDeal.isPending}>Apply</Button>
+            </div>
+            <Button size="sm" variant="ghost" onClick={applyBulkDelete} disabled={deleteDeal.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="space-y-2 p-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
         ) : deals.length === 0 ? (
@@ -120,6 +164,7 @@ export default function DealsPage() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="w-10 px-4 py-3"><DealCheckbox checked={allSelected} onChange={toggleAll} /></th>
                   <th className="px-4 py-3">Creator</th>
                   <th className="px-3 py-3">Deal</th>
                   <th className="px-3 py-3">Created by</th>
@@ -131,7 +176,8 @@ export default function DealsPage() {
               </thead>
               <tbody>
                 {deals.map(deal => (
-                  <tr key={deal.id} onClick={() => setOpenId(deal.id)} className="cursor-pointer border-b border-border/40 hover:bg-muted/30">
+                  <tr key={deal.id} onClick={() => setOpenId(deal.id)} className={cn('cursor-pointer border-b border-border/40 hover:bg-muted/30', selected.has(deal.id) && 'bg-primary/5')}>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}><DealCheckbox checked={selected.has(deal.id)} onChange={() => toggleRow(deal.id)} /></td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <Avatar name={deal.influencer_name || deal.handle} size={32} />
@@ -162,5 +208,14 @@ export default function DealsPage() {
       <NewDealModal open={newOpen} onOpenChange={setNewOpen} onCreated={(id) => setOpenId(id)} />
       <DealDrawer dealId={openId} onOpenChange={(o) => !o && setOpenId(null)} />
     </div>
+  )
+}
+
+function DealCheckbox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button onClick={(e) => { e.stopPropagation(); onChange() }}
+      className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
+      {checked && <Check className="h-3 w-3" />}
+    </button>
   )
 }

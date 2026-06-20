@@ -156,6 +156,13 @@ function AllInfluencers({ isAdmin, onOpen }: { isAdmin: boolean; onOpen: (id: st
   }
   const selectedHandles = rows.filter(r => selected.has(r.id)).map(r => r.handle)
   const addableSelected = rows.filter(r => selected.has(r.id) && !r.in_pipeline)
+  const removableSelected = rows.filter(r => selected.has(r.id) && canRemove(r))
+  const removeSelected = async () => {
+    if (!removableSelected.length) return
+    if (!window.confirm(`Remove ${removableSelected.length} creator${removableSelected.length > 1 ? 's' : ''} from the pipeline?`)) return
+    await Promise.all(removableSelected.map(r => removeFromPipeline.mutateAsync(r.pipeline_id!).catch(() => null)))
+    toast.success(`Removed ${removableSelected.length} from pipeline`); setSelected(new Set())
+  }
   const saveSelectedAsList = () => {
     if (!selectedHandles.length) return
     const name = window.prompt(`Name this list of ${selectedHandles.length} creator${selectedHandles.length > 1 ? 's' : ''}`)
@@ -267,6 +274,9 @@ function AllInfluencers({ isAdmin, onOpen }: { isAdmin: boolean; onOpen: (id: st
             <Button size="sm" onClick={addSelected} disabled={addToPipeline.isPending}><Plus className="mr-1 h-4 w-4" /> Add to Pipeline ({addableSelected.length})</Button>
           )}
           {isAdmin && <Button size="sm" variant="ghost" onClick={() => setAssignOpen(true)} className="border border-border"><UserPlus className="mr-1 h-4 w-4" /> Assign to…</Button>}
+          {removableSelected.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={removeSelected} disabled={removeFromPipeline.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Remove from pipeline ({removableSelected.length})</Button>
+          )}
           <Button variant="ghost" size="sm" onClick={saveSelectedAsList} disabled={saveList.isPending} className="border border-border"><Bookmark className="mr-1 h-4 w-4" /> Save as list</Button>
           <Button variant="ghost" size="sm" onClick={exportCsv} className="border border-border"><Download className="mr-1 h-4 w-4" /> Export</Button>
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>

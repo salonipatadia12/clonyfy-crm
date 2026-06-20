@@ -6,7 +6,7 @@ import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, closestCorners, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core'
-import { usePipeline, useUpdatePipeline, useReassign, useMembers } from '@/lib/api'
+import { usePipeline, useUpdatePipeline, useReassign, useMembers, useRemoveFromPipeline } from '@/lib/api'
 import { useIsAdmin } from '@/lib/auth-context'
 import { Avatar } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
@@ -18,7 +18,7 @@ import { InfluencerDrawer } from '@/components/crm/influencer-drawer'
 import { CloseDealPrompt, type CloseTarget } from '@/components/crm/close-deal-prompt'
 import { STAGES, STAGE_HEX, STAGE_COLORS, ADVANCED_STAGES, stageLabel, formatFollowers, nicheLabel, safeUrl, cn } from '@/lib/utils'
 import type { PipelineRow, Stage } from '@/types/database'
-import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog } from 'lucide-react'
+import { Search, ExternalLink, LayoutGrid, List, Clock, Check, UserCog, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COLUMN_CAP = 60
@@ -45,6 +45,7 @@ function PipelineBoardInner() {
   const { data, isLoading } = usePipeline(urlFilters)
   const updatePipe = useUpdatePipeline()
   const reassign = useReassign()
+  const removePipe = useRemoveFromPipeline()
   const { data: membersData } = useMembers()
   const members = membersData?.members ?? []
   const isAdmin = useIsAdmin()
@@ -135,6 +136,13 @@ function PipelineBoardInner() {
     await Promise.all(ids.map(id => reassign.mutateAsync({ id, toUserId: bulkMember }).catch(() => null)))
     toast.success(`Reassigned ${ids.length}${member ? ` to ${member.name}` : ''}`); setSelected(new Set()); setBulkMember('')
   }
+  const applyBulkRemove = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (!window.confirm(`Remove ${ids.length} creator${ids.length > 1 ? 's' : ''} from the pipeline?`)) return
+    await Promise.all(ids.map(id => removePipe.mutateAsync(id).catch(() => null)))
+    toast.success(`Removed ${ids.length} from pipeline`); setSelected(new Set())
+  }
 
   return (
     <div className="space-y-4">
@@ -213,6 +221,7 @@ function PipelineBoardInner() {
                   <Button size="sm" variant="ghost" className="border border-border" onClick={applyBulkReassign} disabled={!bulkMember || reassign.isPending}><UserCog className="mr-1 h-4 w-4" /> Reassign</Button>
                 </div>
               )}
+              <Button size="sm" variant="ghost" className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={applyBulkRemove} disabled={removePipe.isPending}><Trash2 className="mr-1 h-4 w-4" /> Remove</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
             </div>
           )}
