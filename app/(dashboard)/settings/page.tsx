@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Building2, UserCog, FileText, ShieldCheck, History, Radar, User, ChevronRight } from 'lucide-react'
+import { Building2, UserCog, ShieldCheck, History, Radar, User, ChevronRight } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
 import { useIsAdmin } from '@/lib/auth-context'
 
@@ -18,13 +18,6 @@ const SECTIONS = [
     label: 'Clients and products',
     description: 'Who you run campaigns for, and what you are promoting.',
     icon: Building2,
-    adminOnly: false,
-  },
-  {
-    href: '/templates',
-    label: 'Message templates',
-    description: 'Reusable outreach messages with fill-in fields.',
-    icon: FileText,
     adminOnly: false,
   },
   {

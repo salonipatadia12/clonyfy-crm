@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { DemoToggle } from '@/components/crm/demo'
 import {
-  Sun, Moon, Users, Megaphone, LayoutDashboard, Settings, LogOut,
+  Sun, Moon, Users, Megaphone, LayoutDashboard, FileText, Settings, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
@@ -14,16 +14,18 @@ import { Avatar } from '@/components/ui/avatar'
 import { NotificationsBell } from '@/components/layout/notifications-bell'
 
 /**
- * Four destinations, matching the four things the product does: see what needs
- * doing, work the list, run a campaign, configure the workspace.
+ * Five destinations, matching what the product does: see what needs doing, work
+ * the list, run a campaign, write the messages you send, configure the rest.
  *
- * Outreach, offers and deliverables are not destinations — they are things you
- * do to an influencer inside a campaign, so they live on the campaign page.
+ * Templates earn a top-level slot because they are used while working, not
+ * configured once. Outreach, offers and deliverables are still not destinations
+ * — they are things you do to an influencer inside a campaign.
  */
 export const PRIMARY_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/influencers', label: 'Influencers', icon: Users },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { href: '/templates', label: 'Templates', icon: FileText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
