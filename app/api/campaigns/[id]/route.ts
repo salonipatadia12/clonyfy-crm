@@ -1,41 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireCtx, getCampaign, updateCampaign, deleteCampaign } from '@/lib/data'
+import { NextRequest } from 'next/server'
+import { handle, body } from '@/lib/route'
+import { getCampaignV2, updateCampaignV2, deleteCampaignV2, listCampaignCreators } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id } = await params
-  try {
-    return NextResponse.json({ campaign: await getCampaign(ctx.db, ctx.profile, id) })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'failed'
-    return NextResponse.json({ error: msg }, { status: msg === 'forbidden' ? 403 : 404 })
-  }
-}
+type P = { params: Promise<{ id: string }> }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id } = await params
-  try {
-    return NextResponse.json({ campaign: await updateCampaign(ctx.db, ctx.profile, id, await req.json()) })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'failed'
-    return NextResponse.json({ error: msg }, { status: msg === 'admin only' ? 403 : 400 })
-  }
-}
+export const GET = (_req: NextRequest, { params }: P) =>
+  handle(async ctx => {
+    const id = (await params).id
+    const [campaign, creators] = await Promise.all([
+      getCampaignV2(ctx.db, ctx.profile, id),
+      listCampaignCreators(ctx.db, ctx.profile, { campaignId: id }),
+    ])
+    return { campaign, creators }
+  })
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id } = await params
-  try {
-    return NextResponse.json(await deleteCampaign(ctx.db, ctx.profile, id))
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'failed'
-    return NextResponse.json({ error: msg }, { status: msg === 'admin only' ? 403 : 400 })
-  }
-}
+export const PATCH = (req: NextRequest, { params }: P) =>
+  handle(async ctx => ({ campaign: await updateCampaignV2(ctx.db, ctx.profile, (await params).id, await body(req)) }))
+
+export const DELETE = (_req: NextRequest, { params }: P) =>
+  handle(async ctx => deleteCampaignV2(ctx.db, ctx.profile, (await params).id))

@@ -1,23 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireCtx, listTemplates, createTemplate } from '@/lib/data'
+import { NextRequest } from 'next/server'
+import { handle, body } from '@/lib/route'
+import { listTemplatesV2, createTemplateV2 } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  return NextResponse.json({ templates: await listTemplates(ctx.db, ctx.profile) })
-}
-
-export async function POST(req: NextRequest) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const body = await req.json()
-  if (!body.name || !body.body) return NextResponse.json({ error: 'name and body required' }, { status: 400 })
-  try {
-    return NextResponse.json({ template: await createTemplate(ctx.db, ctx.profile, body) })
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 400 })
-  }
-}
+export const GET = () => handle(async ctx => ({ templates: await listTemplatesV2(ctx.db, ctx.profile) }))
+export const POST = (req: NextRequest) =>
+  handle(async ctx => ({ template: await createTemplateV2(ctx.db, ctx.profile, await body(req)) }))

@@ -58,12 +58,12 @@ function SetPassword() {
         {!ready ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : !hasSession ? (
-          <div className="glass rounded-2xl p-6 text-center text-sm text-muted-foreground">
+          <div className="surface p-5 text-center text-sm text-muted-foreground">
             This invite link is invalid or expired. Ask your admin to re-invite you, or
             <a href="/login" className="ml-1 text-primary hover:underline">sign in</a>.
           </div>
         ) : (
-          <form onSubmit={submit} className="glass space-y-4 rounded-2xl p-6">
+          <form onSubmit={submit} className="surface space-y-4 p-5">
             <div className="space-y-2">
               <Label htmlFor="pw">New password</Label>
               <Input id="pw" type="password" required minLength={6} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder="••••••••" />

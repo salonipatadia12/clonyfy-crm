@@ -22,9 +22,14 @@ export function NotificationsBell() {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(o => !o)} title="Notifications"
-        className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground">
-        <Bell className="h-[18px] w-[18px]" />
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        className="relative rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <Bell className="h-4 w-4" aria-hidden />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
             {unread > 9 ? '9+' : unread}
@@ -32,8 +37,8 @@ export function NotificationsBell() {
         )}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover shadow-2xl">
-          <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover shadow-lg">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <span className="text-sm font-semibold">Notifications {unread > 0 && <span className="ml-1 text-xs font-normal text-primary">({unread} new)</span>}</span>
             {unread > 0 && (
               <button onClick={() => mark.mutate(undefined)} disabled={mark.isPending}
@@ -46,7 +51,7 @@ export function NotificationsBell() {
             {rows.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">You&apos;re all caught up.</p>
             ) : rows.map(n => (
-              <div key={n.id} className={cn('flex items-start gap-2 border-b border-border/40 px-4 py-3 last:border-0', !n.read && 'bg-primary/5')}>
+              <div key={n.id} className={cn('flex items-start gap-2 border-b border-border px-4 py-3 last:border-0', !n.read && 'bg-primary/5')}>
                 {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />}
                 <div className={cn('min-w-0 flex-1', n.read && 'pl-4')}>
                   <p className="text-sm">{n.message}</p>

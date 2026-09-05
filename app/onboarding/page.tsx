@@ -25,20 +25,20 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">Set up your workspace</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Set up your workspace</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            You'll be the admin. We'll load your creator database automatically.
+            You&rsquo;ll be the admin of this workspace.
           </p>
         </div>
 
-        <form action={formAction} className="glass space-y-4 rounded-2xl p-6">
+        <form action={formAction} className="surface space-y-4 p-5">
           <div className="space-y-2">
             <Label htmlFor="name">Your name</Label>
             <Input id="name" name="name" required placeholder="Alex Rivera" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="workspace">Workspace name</Label>
-            <Input id="workspace" name="workspace" required placeholder="Clonyfy Team" />
+            <Input id="workspace" name="workspace" required placeholder="Your agency" />
           </div>
           {state.error && <p className="text-sm text-red-400">{state.error}</p>}
           <SubmitButton />

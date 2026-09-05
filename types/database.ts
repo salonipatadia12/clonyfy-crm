@@ -9,6 +9,9 @@ export type Stage =
 export type Role = 'admin' | 'member'
 export type CommissionType = 'percentage' | 'flat' | 'both'
 
+export type ContactStatus = 'complete' | 'email_only' | 'phone_only' | 'none'
+export type VerificationStatus = 'instagram_verified' | 'pending_instagram_verification'
+
 // Influencer catalog row (read-only directory). Engagement/quality/account_type/
 // market are intentionally NOT exposed per spec §2/§11.
 export interface Influencer {
@@ -25,6 +28,24 @@ export interface Influencer {
   is_verified: boolean
   email: string | null
   scraped_at: string | null
+  // sourcing provenance (migration 0010 — the catalog is no longer Instagram-only):
+  platform: string | null
+  source: string | null
+  location: string | null
+  // contact-first sourcing (migration 0011):
+  phone: string | null
+  phone_type: string | null
+  phone_source_url: string | null
+  phone_source_label: string | null
+  phone_confidence: number | null
+  email_type: string | null
+  email_source_url: string | null
+  email_confidence: number | null
+  contact_status: ContactStatus
+  verification_status: VerificationStatus
+  discovery_route: string | null
+  source_anchor: string | null
+  identity_confidence: number | null
   // pipeline overlay (computed from the pipeline table for this workspace):
   in_pipeline: boolean
   stage: Stage | null
@@ -240,6 +261,8 @@ export interface Deal {
 
 export interface DealDetail extends Deal {
   videos: DealVideo[]
+  // Carried from the pipeline row so links do not assume Instagram.
+  profile_url?: string | null
 }
 
 export interface DealsStats {

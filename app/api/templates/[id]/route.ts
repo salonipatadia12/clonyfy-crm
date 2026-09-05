@@ -1,27 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireCtx, updateTemplate, deleteTemplate } from '@/lib/data'
+import { NextRequest } from 'next/server'
+import { handle, body } from '@/lib/route'
+import { updateTemplateV2, deleteTemplateV2 } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id } = await params
-  try {
-    return NextResponse.json({ template: await updateTemplate(ctx.db, ctx.profile, id, await req.json()) })
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 400 })
-  }
-}
+type P = { params: Promise<{ id: string }> }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id } = await params
-  try {
-    return NextResponse.json(await deleteTemplate(ctx.db, ctx.profile, id))
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 400 })
-  }
-}
+export const PATCH = (req: NextRequest, { params }: P) =>
+  handle(async ctx => ({ template: await updateTemplateV2(ctx.db, ctx.profile, (await params).id, await body(req)) }))
+
+export const DELETE = (_req: NextRequest, { params }: P) =>
+  handle(async ctx => deleteTemplateV2(ctx.db, ctx.profile, (await params).id))

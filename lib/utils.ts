@@ -24,26 +24,26 @@ export const STAGE_LABELS: Record<Stage, string> = {
 export const stageLabel = (s: Stage | null | undefined) => (s ? STAGE_LABELS[s] ?? s : '—')
 
 export const STAGE_COLORS: Record<Stage, string> = {
-  prospecting: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  contacted:   'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  responded:   'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  negotiating: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  closed:      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  live:        'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-  completed:   'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  archived:    'bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500',
+  prospecting: 'bg-muted text-muted-foreground',
+  contacted:   'bg-primary/10 text-primary',
+  responded:   'bg-primary/10 text-primary',
+  negotiating: 'bg-warning/10 text-warning',
+  closed:      'bg-success/10 text-success',
+  live:        'bg-success/10 text-success',
+  completed:   'bg-success/10 text-success',
+  archived:    'bg-muted text-muted-foreground',
 }
 
 // Hex accents per stage — used for the pipeline rail + funnel chart.
 export const STAGE_HEX: Record<Stage, string> = {
-  prospecting: '#94a3b8',
-  contacted:   '#3b82f6',
-  responded:   '#8b5cf6',
-  negotiating: '#f59e0b',
-  closed:      '#10b981',
-  live:        '#06b6d4',
-  completed:   '#22c55e',
-  archived:    '#64748b',
+  prospecting: '#94A3B8',
+  contacted:   '#3157D5',
+  responded:   '#2F6FE0',
+  negotiating: '#B7791F',
+  closed:      '#0F766E',
+  live:        '#0F766E',
+  completed:   '#12867D',
+  archived:    '#8A94A6',
 }
 
 // "Past-contacted" stages — used for niche performance + team metrics (spec §9).
@@ -70,7 +70,10 @@ export const NICHE_LABELS: Record<string, string> = {
 export const nicheLabel = (n: string | null | undefined) =>
   n ? (NICHE_LABELS[n] ?? n.replace(/_/g, ' ')) : '—'
 
-export const NICHE_HEX = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#a3e635']
+// Chart series palette, derived from the product accents. Ordered so adjacent
+// series stay distinguishable in greyscale as well as in colour.
+export const CHART_HEX = ['#3157D5', '#0F766E', '#B7791F', '#5B7CE5', '#3F9E95', '#C9362B', '#8A94A6']
+export const NICHE_HEX = CHART_HEX
 
 // CSV export — agencies live in client decks/spreadsheets. Shared so Influencers,
 // Pipeline, and Deals all export the same safe way (formula-injection guarded).
@@ -124,13 +127,29 @@ export function getInitials(name: string): string {
 
 export function avatarColor(name: string): string {
   const colors = [
-    'bg-violet-100 text-violet-700',
-    'bg-blue-100 text-blue-700',
-    'bg-emerald-100 text-emerald-700',
-    'bg-amber-100 text-amber-700',
-    'bg-rose-100 text-rose-700',
-    'bg-cyan-100 text-cyan-700',
+    'bg-primary/10 text-primary',
+    'bg-success/10 text-success',
+    'bg-warning/10 text-warning',
+    'bg-muted text-muted-foreground',
   ]
   const index = name.charCodeAt(0) % colors.length
   return colors[index]
+}
+
+// Catalog rows can come from several platforms (migration 0010), so UI must not
+// assume Instagram. Falls back to Instagram for legacy rows with no platform.
+export const PLATFORM_LABELS: Record<string, string> = {
+  instagram: 'Instagram', youtube: 'YouTube', github: 'GitHub',
+  bluesky: 'Bluesky', devto: 'DEV', other: 'profile',
+}
+export function platformLabel(platform?: string | null): string {
+  return PLATFORM_LABELS[platform || 'instagram'] ?? 'profile'
+}
+
+/** Immutably toggle a value in a Set — used by every multi-select in the UI. */
+export function toggleIn<T>(set: Set<T>, value: T): Set<T> {
+  const next = new Set(set)
+  if (next.has(value)) next.delete(value)
+  else next.add(value)
+  return next
 }

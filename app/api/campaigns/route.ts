@@ -1,22 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireCtx, listCampaigns, createCampaign } from '@/lib/data'
+import { NextRequest } from 'next/server'
+import { handle, body } from '@/lib/route'
+import { listCampaignsV2, createCampaignV2 } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  return NextResponse.json(await listCampaigns(ctx.db, ctx.profile))
-}
-
-export async function POST(req: NextRequest) {
-  const ctx = await requireCtx()
-  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  try {
-    return NextResponse.json({ campaign: await createCampaign(ctx.db, ctx.profile, await req.json()) })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'failed'
-    return NextResponse.json({ error: msg }, { status: msg === 'admin only' ? 403 : 400 })
-  }
-}
+export const GET = () => handle(async ctx => ({ campaigns: await listCampaignsV2(ctx.db, ctx.profile) }))
+export const POST = (req: NextRequest) =>
+  handle(async ctx => ({ campaign: await createCampaignV2(ctx.db, ctx.profile, await body(req)) }))

@@ -98,6 +98,10 @@ export interface ListParams {
   verifiedOnly?: boolean
   hideInPipeline?: boolean
   handles?: string[]      // saved-list selection (#6)
+  contactStatus?: string  // 'complete' | 'email_only' | 'phone_only' | 'none'
+  hasPhone?: boolean
+  hasEmail?: boolean
+  verificationStatus?: string
   sort?: string
   order?: 'asc' | 'desc'
   page?: number
@@ -143,7 +147,7 @@ export async function listInfluencers(
   const excluded = p.hideInPipeline ? new Set(overlay.keys()) : null
 
   let q = db.from('influencers')
-    .select('id, handle, full_name, follower_count, follower_bucket, niche, country, biography, bio_link, profile_url, is_verified, email, scraped_at', { count: 'exact' })
+    .select('id, handle, full_name, follower_count, follower_bucket, niche, country, biography, bio_link, profile_url, is_verified, email, scraped_at, platform, source, location, phone, phone_original, phone_type, phone_source_url, phone_source_label, phone_confidence, email_type, email_source_url, email_confidence, contact_status, verification_status, discovery_route, source_anchor, identity_confidence', { count: 'exact' })
     .eq('workspace_id', profile.workspace_id)
 
   if (p.search) {
@@ -154,9 +158,15 @@ export async function listInfluencers(
   if (p.country) q = q.eq('country', p.country)
   if (p.handles?.length) q = q.in('handle', p.handles.slice(0, 1000))
   if (p.verifiedOnly) q = q.eq('is_verified', true)
+  if (p.contactStatus) q = q.eq('contact_status', p.contactStatus)
+  if (p.hasPhone) q = q.not('phone', 'is', null)
+  if (p.hasEmail) q = q.not('email', 'is', null)
+  if (p.verificationStatus) q = q.eq('verification_status', p.verificationStatus)
   if (typeof p.minFollowers === 'number') q = q.gte('follower_count', p.minFollowers)
   if (typeof p.maxFollowers === 'number') q = q.lt('follower_count', p.maxFollowers)
-  q = q.lte('follower_count', CATALOG_FOLLOWER_CEILING)  // hide mega-accounts (spec #7)
+  // `lte` drops NULLs in Postgres, and a contact-first candidate that has not
+  // been scraped yet has a NULL follower_count. Keep those visible.
+  q = q.or(`follower_count.lte.${CATALOG_FOLLOWER_CEILING},follower_count.is.null`)
   q = q.eq('hidden', false)  // hide soft-hidden rows (e.g. fashion in the design niche)
   if (excluded && excluded.size) q = q.not('handle', 'in', `(${[...excluded].map(h => `"${h}"`).join(',')})`)
 
@@ -172,6 +182,16 @@ export async function listInfluencers(
       follower_count: r.follower_count, follower_bucket: r.follower_bucket,
       niche: r.niche, country: r.country, biography: r.biography, bio_link: r.bio_link,
       profile_url: r.profile_url, is_verified: !!r.is_verified, email: r.email, scraped_at: r.scraped_at,
+      platform: r.platform ?? 'instagram', source: r.source ?? null, location: r.location ?? null,
+      phone: r.phone ?? null, phone_type: r.phone_type ?? null,
+      phone_source_url: r.phone_source_url ?? null, phone_source_label: r.phone_source_label ?? null,
+      phone_confidence: r.phone_confidence ?? null,
+      email_type: r.email_type ?? null, email_source_url: r.email_source_url ?? null,
+      email_confidence: r.email_confidence ?? null,
+      contact_status: (r.contact_status ?? 'none') as Influencer['contact_status'],
+      verification_status: (r.verification_status ?? 'instagram_verified') as Influencer['verification_status'],
+      discovery_route: r.discovery_route ?? null, source_anchor: r.source_anchor ?? null,
+      identity_confidence: r.identity_confidence ?? null,
       in_pipeline: !!ov, stage: ov?.stage ?? null, pipeline_id: ov?.id ?? null,
       assigned_to: ov?.assigned_to ?? null,
       assigned_name: profile.role === 'admin' ? (ov?.assigned_name ?? null) : (ov ? (ov.assigned_to === profile.id ? ov.assigned_name : 'A teammate') : null),
@@ -182,7 +202,7 @@ export async function listInfluencers(
 
 // Allowlist — never return engagement_rate/eng_quality/account_type/quality_tier/
 // market to the client (spec §2/§11 forbid surfacing them).
-const INF_DETAIL_COLS = 'id, handle, full_name, follower_count, follower_bucket, niche, country, biography, bio_link, profile_url, is_verified, email, scraped_at'
+const INF_DETAIL_COLS = 'id, handle, full_name, follower_count, follower_bucket, niche, country, biography, bio_link, profile_url, is_verified, email, scraped_at, platform, source, location, phone, phone_original, phone_type, phone_source_url, phone_source_label, phone_confidence, email_type, email_source_url, email_confidence, contact_status, verification_status, discovery_route, source_anchor, identity_confidence'
 
 export async function getInfluencerDetail(db: Db, profile: Profile, idOrHandle: string) {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrHandle)
@@ -628,11 +648,18 @@ export async function getAnalytics(db: Db, profile: Profile): Promise<AnalyticsR
   return result
 }
 
+// Same predicate as listInfluencers, including the NULL follower_count case.
+// `lte` alone drops NULLs, so the two used to disagree and the page could report
+// more rows than its own stated total.
+const CEILING_OR_NULL = `follower_count.lte.${CATALOG_FOLLOWER_CEILING},follower_count.is.null`
+
 export async function getFacets(db: Db, profile: Profile) {
-  const { data } = await db.from('influencers').select('niche, country').eq('workspace_id', profile.workspace_id).lte('follower_count', CATALOG_FOLLOWER_CEILING).eq('hidden', false)
+  const { data } = await db.from('influencers').select('niche, country')
+    .eq('workspace_id', profile.workspace_id).eq('hidden', false).or(CEILING_OR_NULL)
   const niche = new Set<string>(), country = new Set<string>()
   for (const r of data ?? []) { if (r.niche) niche.add(r.niche); if (r.country) country.add(r.country) }
-  const { count } = await db.from('influencers').select('id', { count: 'exact', head: true }).eq('workspace_id', profile.workspace_id).lte('follower_count', CATALOG_FOLLOWER_CEILING).eq('hidden', false)
+  const { count } = await db.from('influencers').select('id', { count: 'exact', head: true })
+    .eq('workspace_id', profile.workspace_id).eq('hidden', false).or(CEILING_OR_NULL)
   return { niche: [...niche].sort(), country: [...country].sort(), total: count ?? 0 }
 }
 

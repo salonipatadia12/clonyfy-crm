@@ -29,7 +29,8 @@ function cookieHeader(session: unknown): string {
 
 async function main() {
   const env = readEnv()
-  const [email = 'manyamsoumithreddy@gmail.com', password = 'Clonyfy2026!'] = process.argv.slice(2)
+  const [email, password] = process.argv.slice(2)
+  if (!email || !password) { console.error('usage: tsx scripts/authed-test.ts <email> <password>'); process.exit(1) }
   const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
   const { data, error } = await sb.auth.signInWithPassword({ email, password })
   if (error || !data.session) throw new Error('sign-in failed: ' + error?.message)

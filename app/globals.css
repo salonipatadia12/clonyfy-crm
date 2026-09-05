@@ -2,97 +2,122 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Clonify design tokens — a calm operations palette.
+
+  Light is the default and the polished case. Dark is a neutral ink/slate theme,
+  not a tinted version of the old violet-black. There are no gradients, no glass
+  and no glow: surfaces are solid, separated by one-pixel borders and a very
+  restrained shadow.
+*/
 @layer base {
   :root {
-    --background: 240 20% 99%;
-    --foreground: 240 12% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 12% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 12% 8%;
-    --primary: 263 80% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 42%;
-    --accent: 263 80% 58%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 263 80% 58%;
-    --radius: 0.85rem;
+    --background:            220 20% 97%;   /* #F6F7F9 warm neutral canvas */
+    --foreground:            221 38% 15%;   /* #172033 deep ink            */
+    --card:                    0  0% 100%;  /* #FFFFFF primary surface     */
+    --card-foreground:       221 38% 15%;
+    --popover:                 0  0% 100%;
+    --popover-foreground:    221 38% 15%;
+    --primary:               226 66% 51%;   /* #3157D5 confident blue      */
+    --primary-foreground:      0  0% 100%;
+    --secondary:             220 20% 96%;
+    --secondary-foreground:  221 38% 15%;
+    --muted:                 220 20% 96%;
+    --muted-foreground:      221 13% 46%;   /* #667085 secondary text      */
+    --accent:                220 24% 94%;
+    --accent-foreground:     221 38% 15%;
+    --success:               175 77% 26%;   /* #0F766E restrained teal     */
+    --success-foreground:      0  0% 100%;
+    --warning:                36 71% 42%;   /* #B7791F                     */
+    --warning-foreground:      0  0% 100%;
+    --destructive:             4 65% 48%;   /* #C9362B                     */
+    --destructive-foreground:  0  0% 100%;
+    --border:                218 24% 91%;   /* #E3E7EE                     */
+    --input:                 218 24% 91%;
+    --ring:                  226 66% 51%;
+    --brand:                 221 45% 18%;   /* dark navy, used sparingly   */
+    --brand-foreground:        0  0% 100%;
+    --radius: 0.7rem;                       /* 11px                        */
   }
+
   .dark {
-    --background: 240 14% 4%;
-    --foreground: 240 10% 96%;
-    --card: 240 12% 7%;
-    --card-foreground: 240 10% 96%;
-    --popover: 240 14% 6%;
-    --popover-foreground: 240 10% 96%;
-    --primary: 263 85% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 8% 13%;
-    --secondary-foreground: 240 10% 96%;
-    --muted: 240 8% 13%;
-    --muted-foreground: 240 6% 60%;
-    --accent: 263 85% 67%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 8% 16%;
-    --input: 240 8% 16%;
-    --ring: 263 85% 67%;
+    --background:            222 24%  8%;
+    --foreground:            214 24% 94%;
+    --card:                  222 20% 11%;
+    --card-foreground:       214 24% 94%;
+    --popover:               222 22% 12%;
+    --popover-foreground:    214 24% 94%;
+    --primary:               222 78% 64%;
+    --primary-foreground:    222 40%  9%;
+    --secondary:             220 16% 17%;
+    --secondary-foreground:  214 24% 94%;
+    --muted:                 220 16% 17%;
+    --muted-foreground:      216 14% 68%;
+    --accent:                220 16% 20%;
+    --accent-foreground:     214 24% 94%;
+    --success:               174 60% 44%;
+    --success-foreground:    222 40%  9%;
+    --warning:                38 74% 58%;
+    --warning-foreground:    222 40%  9%;
+    --destructive:             4 72% 62%;
+    --destructive-foreground:222 40%  9%;
+    --border:                220 14% 21%;
+    --input:                 220 14% 21%;
+    --ring:                  222 78% 64%;
+    --brand:                 222 20% 14%;
+    --brand-foreground:      214 24% 94%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
+  html { color-scheme: light; }
+  .dark { color-scheme: dark; }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
+    font-family: var(--font-geist-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  /* One visible, accessible focus treatment everywhere. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  /* Tabular figures in data tables keep columns from shifting. */
+  .tnum { font-variant-numeric: tabular-nums; }
 }
 
 @layer components {
-  /* Ambient app background — subtle aurora glow on a near-black canvas. */
-  .app-canvas {
-    position: relative;
-    background:
-      radial-gradient(900px circle at 12% -8%, hsl(263 85% 30% / 0.28), transparent 45%),
-      radial-gradient(800px circle at 95% 0%, hsl(190 85% 35% / 0.16), transparent 42%),
-      radial-gradient(1000px circle at 60% 110%, hsl(280 80% 35% / 0.14), transparent 50%),
-      hsl(var(--background));
+  /* The one surface style. Solid, one-pixel border, barely-there shadow. */
+  .surface {
+    @apply rounded-xl border border-border bg-card;
+    box-shadow: 0 1px 2px hsl(221 38% 15% / 0.04);
+  }
+  .surface-flat { @apply rounded-xl border border-border bg-card; }
+
+  /* Section heading above a group of cards or a table. */
+  .section-title {
+    @apply text-[13px] font-semibold uppercase tracking-wide text-muted-foreground;
   }
 
-  .glass {
-    @apply border border-border/70 bg-card/70 backdrop-blur-xl;
-  }
-
-  .glass-strong {
-    background: linear-gradient(180deg, hsl(var(--card) / 0.92), hsl(var(--card) / 0.7));
-    @apply border border-border/70 backdrop-blur-xl;
-  }
-
-  .gradient-text {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(120deg, hsl(263 90% 78%), hsl(295 85% 72%), hsl(190 90% 70%));
-  }
-
-  .card-hover {
-    @apply transition-all duration-200 hover:border-primary/40 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.25),0_12px_40px_-12px_hsl(var(--primary)/0.45)];
-  }
-
-  .kpi-ring {
-    box-shadow: inset 0 1px 0 0 hsl(0 0% 100% / 0.05), 0 18px 50px -24px hsl(263 85% 50% / 0.5);
+  /* Sticky data-table header. */
+  .thead-sticky {
+    @apply sticky top-0 z-10 bg-card;
+    box-shadow: inset 0 -1px 0 hsl(var(--border));
   }
 }
 
-/* Thin, dark scrollbars */
+/* Neutral, unobtrusive scrollbars in both themes. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); background-clip: content-box; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.45); background-clip: content-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

@@ -6,11 +6,11 @@ import { Toaster } from '@/components/ui/toaster'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-canvas min-h-screen">
+    <div className="min-h-dvh bg-background">
       <Sidebar />
-      <div className="md:ml-64">
+      <div className="md:ml-60">
         <MobileHeader />
-        <main className="mx-auto max-w-[1500px] p-5 md:p-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1440px] p-4 md:p-6">{children}</main>
       </div>
       <Toaster />
     </div>

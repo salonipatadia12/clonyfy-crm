@@ -1,0 +1,23 @@
+# Keeps the Supabase project active so it never idle-pauses into deletion.
+# The previous project was lost exactly this way — free projects pause after ~7
+# days idle and are deleted after ~90 days paused.
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: '0 9 * * 1,4'   # Mondays and Thursdays, 09:00 UTC — well inside the 7-day window
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node scripts/keepalive.mjs

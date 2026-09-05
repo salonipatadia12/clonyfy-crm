@@ -6,7 +6,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const ENV_PATH = path.join(process.cwd(), '.env.local')
-const PROJECT_REF = 'vyhkitdimdwifhtpiiqm'
+// Read from .env.local so a rebuilt/migrated project never leaves this stale.
+const PROJECT_REF = (function () {
+  const m = fs.existsSync(ENV_PATH) && fs.readFileSync(ENV_PATH, 'utf8').match(/^SUPABASE_PROJECT_REF=(.+)$/m)
+  if (m) return m[1].trim()
+  const u = fs.existsSync(ENV_PATH) && fs.readFileSync(ENV_PATH, 'utf8').match(/^NEXT_PUBLIC_SUPABASE_URL=https:\/\/([a-z0-9]+)\.supabase\.co/m)
+  if (u) return u[1]
+  throw new Error('SUPABASE_PROJECT_REF missing from .env.local')
+})()
 
 export function readEnv() {
   const out = {}

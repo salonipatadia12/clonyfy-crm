@@ -1,247 +1,252 @@
 'use client'
 
 import { useState } from 'react'
-import { useMembers, useInviteMember, useRemoveMember, useAnalytics, useSetMemberGoal } from '@/lib/api'
-import { useIsAdmin } from '@/lib/auth-context'
+import { toast } from 'sonner'
+import { UserPlus, Trash2, Copy, Check, Target, ShieldCheck } from 'lucide-react'
+import { useMembers, useInviteMember, useRemoveMember, useSetMemberGoal } from '@/lib/api'
+import { useAnalyticsV2 } from '@/lib/queries'
+import { useIsAdmin, useAuth } from '@/lib/auth-context'
+import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Avatar } from '@/components/ui/avatar'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
-import { UserPlus, Trash2, Copy, ShieldCheck, Check, Target } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
-import { toast } from 'sonner'
+import { Labelled } from '@/components/ui/field'
+import { EmptyState, Shimmer } from '@/components/ui/states'
+import { Table, TableScroll, THead, TH, TR, TD, Checkbox } from '@/components/ui/table'
+import { relativeDate } from '@/lib/domain'
+import { toggleIn } from '@/lib/utils'
 
 export default function TeamPage() {
   const isAdmin = useIsAdmin()
+  const me = useAuth()
   const { data, isLoading } = useMembers()
-  const { data: analytics } = useAnalytics()
+  const { data: analytics } = useAnalyticsV2({})
   const invite = useInviteMember()
   const remove = useRemoveMember()
   const setGoal = useSetMemberGoal()
 
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'member' | 'admin'>('member')
+  const [form, setForm] = useState({ name: '', email: '', role: 'member' as 'member' | 'admin' })
   const [invited, setInvited] = useState<{ email: string; pw: string | null; link: string | null } | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkGoal, setBulkGoal] = useState('')
 
   if (!isAdmin) {
-    return <div className="glass rounded-2xl p-10 text-center text-sm text-muted-foreground">This page is for admins only.</div>
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Team" />
+        <EmptyState icon={ShieldCheck} title="Admins only" description="Ask an admin in this workspace if you need someone added or reassigned." />
+      </div>
+    )
   }
+  if (isLoading) return <div className="space-y-4"><Shimmer className="h-8 w-32" /><Shimmer className="h-64 rounded-xl" /></div>
 
   const members = data?.members ?? []
   const reassignments = data?.reassignments ?? []
-  const statById = new Map((analytics?.members ?? []).map(m => [m.id, m]))
-  // Only non-admin members are selectable (goals + removal apply to reps).
-  const selectableMembers = members.filter(m => m.role !== 'admin')
-  const allSelected = selectableMembers.length > 0 && selectableMembers.every(m => selected.has(m.id))
-  const toggleAll = () => {
-    const next = new Set(selected)
-    if (allSelected) selectableMembers.forEach(m => next.delete(m.id)); else selectableMembers.forEach(m => next.add(m.id))
-    setSelected(next)
-  }
-  const toggleRow = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const applyBulkGoal = async () => {
-    const goal = Number(bulkGoal)
-    const ids = [...selected]
-    if (!ids.length || !Number.isFinite(goal)) return
-    await Promise.all(ids.map(id => setGoal.mutateAsync({ id, goal }).catch(() => null)))
-    toast.success(`Set goal ${goal} for ${ids.length} member${ids.length > 1 ? 's' : ''}`); setSelected(new Set()); setBulkGoal('')
-  }
-  const applyBulkRemove = async () => {
-    const ids = [...selected]
-    if (!ids.length) return
-    if (!window.confirm(`Remove ${ids.length} member${ids.length > 1 ? 's' : ''}? Their pipelines move to you.`)) return
-    await Promise.all(ids.map(id => remove.mutateAsync(id).catch(() => null)))
-    toast.success(`Removed ${ids.length} member${ids.length > 1 ? 's' : ''}`); setSelected(new Set())
-  }
+  const workByOwner = new Map((analytics?.byOwner ?? []).map(o => [o.id, o]))
+  const selectable = members.filter(m => m.role !== 'admin')
+  const allSelected = selectable.length > 0 && selectable.every(m => selected.has(m.id))
 
   const submit = () => {
-    if (!name.trim() || !email.trim()) { toast.error('Name and email required'); return }
-    invite.mutate({ name, email, role }, {
-      onSuccess: (r) => {
-        setOpen(false); setName(''); setEmail(''); setRole('member')
+    if (!form.name.trim() || !form.email.trim()) { toast.error('Name and email are both required.'); return }
+    invite.mutate(form, {
+      onSuccess: r => {
+        setOpen(false); setForm({ name: '', email: '', role: 'member' })
         if (r.inviteLink || r.tempPassword) setInvited({ email: r.email, pw: r.tempPassword, link: r.inviteLink })
-        else toast.success('Member added (existing account linked)')
+        else toast.success('Member added — their existing account was linked.')
       },
-      onError: (e) => toast.error(e instanceof Error ? e.message : 'Invite failed'),
+      onError: e => toast.error(e instanceof Error ? e.message : 'Could not invite this person.'),
     })
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Team</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Manage members, assignments, and the reassignment log.</p>
-        </div>
-        <Button onClick={() => setOpen(true)}><UserPlus className="mr-1.5 h-4 w-4" /> Add member</Button>
-      </header>
+    <div className="space-y-4">
+      <PageHeader
+        title="Team"
+        description="Who works this workspace, what they own and how much of it is moving. A workspace allows at most two admins."
+        actions={<Button size="sm" onClick={() => setOpen(true)}><UserPlus className="h-3.5 w-3.5" aria-hidden />Invite member</Button>}
+      />
 
       {selected.size > 0 && (
-        <div className="glass-strong flex flex-wrap items-center gap-3 rounded-xl border-primary/30 p-3">
-          <span className="text-sm font-medium">{selected.size} selected</span>
-          <div className="flex items-center gap-1.5">
-            <Target className="h-4 w-4 text-muted-foreground" />
-            <Input value={bulkGoal} onChange={(e) => setBulkGoal(e.target.value)} type="number" min={0} placeholder="Monthly goal" className="h-9 w-32" />
-            <Button size="sm" onClick={applyBulkGoal} disabled={!bulkGoal || setGoal.isPending}>Set goal</Button>
-          </div>
-          <Button size="sm" variant="ghost" onClick={applyBulkRemove} disabled={remove.isPending} className="border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"><Trash2 className="mr-1 h-4 w-4" /> Remove</Button>
+        <div className="surface flex flex-wrap items-end gap-2 p-3">
+          <span className="text-[13px] font-medium">{selected.size} selected</span>
+          <Labelled label="Monthly goal" className="w-32">
+            <Input inputMode="numeric" value={bulkGoal} onChange={e => setBulkGoal(e.target.value)} />
+          </Labelled>
+          <Button
+            size="sm"
+            disabled={!bulkGoal}
+            onClick={async () => {
+              const goal = Number(bulkGoal)
+              if (!Number.isFinite(goal)) return
+              await Promise.all([...selected].map(id => setGoal.mutateAsync({ id, goal }).catch(() => null)))
+              toast.success(`Goal set for ${selected.size} member${selected.size === 1 ? '' : 's'}.`)
+              setSelected(new Set()); setBulkGoal('')
+            }}
+          >
+            <Target className="h-3.5 w-3.5" aria-hidden />Apply goal
+          </Button>
+          <Button
+            size="sm" variant="ghost" className="text-destructive"
+            onClick={async () => {
+              if (!confirm(`Remove ${selected.size} member(s)? Their campaign creators are reassigned to you.`)) return
+              await Promise.all([...selected].map(id => remove.mutateAsync(id).catch(() => null)))
+              toast.success('Members removed.'); setSelected(new Set())
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />Remove
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
 
-      <div className="glass overflow-hidden rounded-2xl">
-        {isLoading ? <Skeleton className="h-48 w-full" /> : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="w-10 px-4 py-3">
-                  <button onClick={toggleAll} title="Select all members"
-                    className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', allSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
-                    {allSelected && <Check className="h-3 w-3" />}
-                  </button>
-                </th>
-                <th className="px-4 py-3">Member</th>
-                <th className="px-3 py-3">Role</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3 text-right">Assigned</th>
-                <th className="px-3 py-3 text-right">Contacted</th>
-                <th className="px-3 py-3 text-right">Responded</th>
-                <th className="px-3 py-3 text-right">Videos</th>
-                <th className="px-3 py-3 text-center">Monthly goal</th>
-                <th className="px-3 py-3"></th>
+      <div className="surface overflow-hidden">
+        <TableScroll>
+          <Table>
+            <THead>
+              <tr>
+                <TH className="w-9">
+                  <Checkbox
+                    label="Select all members"
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map(m => m.id)))}
+                  />
+                </TH>
+                <TH>Member</TH><TH>Role</TH><TH>Status</TH>
+                <TH align="right">Creators owned</TH><TH align="right">Contacted</TH>
+                <TH align="right">Replied</TH><TH align="right">Agreed</TH>
+                <TH>Last active</TH><TH className="w-16"><span className="sr-only">Actions</span></TH>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {members.map(m => {
-                const s = statById.get(m.id)
+                const w = workByOwner.get(m.id)
                 return (
-                  <tr key={m.id} className={cn('border-b border-border/40 hover:bg-muted/30', selected.has(m.id) && 'bg-primary/5')}>
-                    <td className="px-4 py-3">
+                  <TR key={m.id}>
+                    <TD>
                       {m.role !== 'admin' && (
-                        <button onClick={() => toggleRow(m.id)} title="Select"
-                          className={cn('flex h-4 w-4 items-center justify-center rounded border transition-colors', selected.has(m.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50')}>
-                          {selected.has(m.id) && <Check className="h-3 w-3" />}
-                        </button>
+                        <Checkbox
+                          label={`Select ${m.name}`}
+                          checked={selected.has(m.id)}
+                          onChange={() => setSelected(s => toggleIn(s, m.id))}
+                        />
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={m.name} size={34} />
-                        <div className="min-w-0"><p className="truncate font-medium">{m.name}</p><p className="text-xs text-muted-foreground">{m.email}</p></div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${m.role === 'admin' ? 'bg-violet-500/15 text-violet-300' : 'bg-muted text-muted-foreground'}`}>
-                        {m.role === 'admin' && <ShieldCheck className="h-3 w-3" />}{m.role}
+                    </TD>
+                    <TD>
+                      <span className="flex items-center gap-2">
+                        <Avatar name={m.name} size={28} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13px] font-medium">{m.name}{m.id === me.id && ' (you)'}</span>
+                          <span className="block truncate text-2xs text-muted-foreground">{m.email}</span>
+                        </span>
                       </span>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">{m.invite_accepted ? 'Active' : 'Invited'}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{s?.assigned ?? 0}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{s?.contacted ?? 0}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{s?.responded ?? 0}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{s?.videos ?? 0}</td>
-                    <td className="px-3 py-3"><GoalCell memberId={m.id} goal={s?.monthly_goal ?? 0} done={s?.advancedThisMonth ?? 0} /></td>
-                    <td className="px-3 py-3 text-right">
-                      {m.role !== 'admin' && (
-                        <button onClick={() => { if (confirm(`Remove ${m.name}? Their pipeline moves to you.`)) remove.mutate(m.id, { onSuccess: () => toast.success('Member removed') }) }}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" title="Remove member">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                    </TD>
+                    <TD><Badge tone={m.role === 'admin' ? 'info' : 'neutral'}>{m.role}</Badge></TD>
+                    <TD><Badge tone={m.invite_accepted ? 'success' : 'warning'}>{m.invite_accepted ? 'Active' : 'Invited'}</Badge></TD>
+                    <TD align="right" className="tnum">{w?.creators ?? 0}</TD>
+                    <TD align="right" className="tnum">{w?.contacted ?? 0}</TD>
+                    <TD align="right" className="tnum">{w?.replied ?? 0}</TD>
+                    <TD align="right" className="tnum">{w?.agreed ?? 0}</TD>
+                    <TD className="text-2xs text-muted-foreground">{relativeDate(m.last_active)}</TD>
+                    <TD align="right">
+                      {m.id !== me.id && (
+                        <Button
+                          variant="ghost" size="xs"
+                          onClick={() => {
+                            if (!confirm(`Remove ${m.name}? Their campaign creators are reassigned to you.`)) return
+                            remove.mutate(m.id, { onSuccess: () => toast.success('Member removed.'), onError: e => toast.error(e.message) })
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden /><span className="sr-only">Remove {m.name}</span>
+                        </Button>
                       )}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 )
               })}
             </tbody>
-          </table>
-        )}
+          </Table>
+        </TableScroll>
       </div>
 
-      <div className="glass rounded-2xl p-6">
-        <h2 className="mb-1 text-base font-semibold">Reassignment Log</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Every pipeline reassignment, audited.</p>
-        {reassignments.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No reassignments yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {reassignments.map(r => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg border border-border/50 bg-card/40 px-3 py-2 text-sm">
-                <span>
-                  <span className="font-medium">{r.admin_name}</span> moved <span className="font-medium">@{r.profile_handle}</span>
-                  {r.from_user_name ? <> from {r.from_user_name}</> : null} → <span className="font-medium">{r.to_user_name}</span>
-                  {r.reason ? <span className="text-muted-foreground"> · {r.reason}</span> : null}
+      {reassignments.length > 0 && (
+        <section className="surface p-4">
+          <h2 className="section-title mb-2">Recent reassignments</h2>
+          <ul className="space-y-1 text-[13px]">
+            {reassignments.slice(0, 10).map(r => (
+              <li key={r.id} className="flex items-baseline justify-between gap-2">
+                <span className="min-w-0 truncate text-muted-foreground">
+                  <span className="font-medium text-foreground">{r.admin_name ?? 'An admin'}</span> moved @{r.profile_handle}
+                  {r.from_user_name && ` from ${r.from_user_name}`} to {r.to_user_name ?? 'a member'}
                 </span>
-                <span className="shrink-0 text-xs text-muted-foreground">{formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}</span>
-              </div>
+                <span className="shrink-0 text-2xs text-muted-foreground">{relativeDate(r.created_at)}</span>
+              </li>
             ))}
-          </div>
-        )}
-      </div>
+          </ul>
+        </section>
+      )}
 
-      <Modal open={open} onOpenChange={setOpen} title="Add team member" description="They'll get a temporary password to sign in and change.">
-        <div className="space-y-3">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@company.com" />
-          <Select value={role} onChange={(e) => setRole(e.target.value as 'member' | 'admin')}>
-            <option value="member">Member</option>
-            <option value="admin">Admin (max 2)</option>
-          </Select>
-          <Button onClick={submit} disabled={invite.isPending} className="w-full">{invite.isPending ? 'Adding…' : 'Add member'}</Button>
+      <Modal
+        open={open} onOpenChange={setOpen}
+        title="Invite a team member"
+        description="Creates their account and returns a one-click link they can use to set their own password."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={submit} disabled={invite.isPending}>{invite.isPending ? 'Inviting…' : 'Send invite'}</Button>
+          </>
+        }
+      >
+        <div className="grid gap-3">
+          <Labelled label="Name" required><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></Labelled>
+          <Labelled label="Email" required><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></Labelled>
+          <Labelled label="Role" hint="A workspace allows at most two admins">
+            <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as 'member' | 'admin' }))}>
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </Select>
+          </Labelled>
         </div>
       </Modal>
 
-      <Modal open={!!invited} onOpenChange={(o) => !o && setInvited(null)} title="Member created" description="Send them the invite link to set their own password.">
-        {invited && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm">
-              <p><span className="text-muted-foreground">Email:</span> {invited.email}</p>
-            </div>
-            {invited.link && (
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Invite link (sets their password)</p>
-                <div className="flex gap-2">
-                  <Input readOnly value={invited.link} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
-                  <Button onClick={() => { navigator.clipboard?.writeText(invited.link!); toast.success('Link copied') }}><Copy className="h-4 w-4" /></Button>
-                </div>
-              </div>
-            )}
-            {invited.pw && (
-              <p className="text-xs text-muted-foreground">Fallback temp password: <span className="font-mono">{invited.pw}</span> (they can change it under Account).</p>
-            )}
+      {invited && (
+        <Modal
+          open onOpenChange={() => setInvited(null)}
+          title={`Invite ready for ${invited.email}`}
+          description="Share this link so they can set their own password. It is shown once."
+          footer={<Button onClick={() => setInvited(null)}>Done</Button>}
+        >
+          <div className="space-y-2">
+            {invited.link && <CopyRow label="Set-password link" value={invited.link} />}
+            {invited.pw && <CopyRow label="Temporary password" value={invited.pw} />}
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
     </div>
   )
 }
 
-function GoalCell({ memberId, goal, done }: { memberId: string; goal: number; done: number }) {
-  const setGoal = useSetMemberGoal()
-  const [val, setVal] = useState(String(goal))
-  const pct = goal > 0 ? Math.min(100, (done / goal) * 100) : 0
-  const save = () => { const n = Number(val); if (Number.isFinite(n) && n !== goal) setGoal.mutate({ id: memberId, goal: n }, { onSuccess: () => toast.success('Goal set') }) }
+function CopyRow({ label, value }: { label: string; value: string }) {
+  const [done, setDone] = useState(false)
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="flex items-center gap-1">
-        <Input value={val} onChange={(e) => setVal(e.target.value)} onBlur={save}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-          type="number" min={0} className="h-7 w-16 text-center text-xs" />
+    <div className="space-y-1">
+      <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-muted px-2 py-1.5 text-2xs">{value}</code>
+        <Button
+          variant="outline" size="sm"
+          onClick={async () => {
+            try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500) }
+            catch { toast.error('Your browser blocked clipboard access.') }
+          }}
+        >
+          {done ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+          {done ? 'Copied' : 'Copy'}
+        </Button>
       </div>
-      {goal > 0 && (
-        <div className="w-20">
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted/50">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="mt-0.5 text-center text-[10px] text-muted-foreground">{done}/{goal} this mo</p>
-        </div>
-      )}
     </div>
   )
 }

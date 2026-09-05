@@ -8,6 +8,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // via upsert on (workspace_id, handle).
 
 const MIN_FOLLOWERS = 1000
+// Celebrity ceiling — matches CATALOG_FOLLOWER_CEILING in lib/data.ts. The old
+// Google-dork discovery route surfaced 45M-follower accounts; seeding without a
+// ceiling is how they got into the catalog the first time.
+const MAX_FOLLOWERS = 500000
 
 type Row = Record<string, string>
 
@@ -50,7 +54,9 @@ export async function seedInfluencers(
 
   const parsed = Papa.parse<Row>(fs.readFileSync(csvPath, 'utf8'), { header: true, skipEmptyLines: true })
   const rows = parsed.data.filter(r =>
-    r.handle && !yes(r.is_brand_noise) && (toInt(r.follower_count) ?? 0) >= MIN_FOLLOWERS,
+    r.handle && !yes(r.is_brand_noise) &&
+    (toInt(r.follower_count) ?? 0) >= MIN_FOLLOWERS &&
+    (toInt(r.follower_count) ?? 0) <= MAX_FOLLOWERS,
   )
 
   const now = new Date().toISOString()

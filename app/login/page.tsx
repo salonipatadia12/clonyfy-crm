@@ -47,7 +47,7 @@ function LoginForm() {
       }
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Authentication failed')
+      toast.error(err instanceof Error ? err.message : 'Could not sign you in. Check the email and password and try again.')
       setBusy(false)
     }
   }
@@ -56,11 +56,11 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">Clonyfy</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Influencer outreach CRM</p>
+          <h1 className="text-xl font-semibold tracking-tight">Clonify</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Influencer operations</p>
         </div>
 
-        <form onSubmit={submit} className="glass space-y-4 rounded-2xl p-6">
+        <form onSubmit={submit} className="surface space-y-4 p-5">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" required autoComplete="email" value={email}
