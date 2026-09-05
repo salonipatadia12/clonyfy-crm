@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.local
+.env*.local
 .claude-flow/data/
 *.log
 .next/
@@ -10,3 +12,22 @@ data/
 *.db-shm
 tsconfig.tsbuildinfo
 .vercel
+
+# Database snapshots — contain auth password hashes and creator PII.
+# This repo is public; never commit these.
+backups/
+
+# Env backups — these hold service-role keys and DB passwords.
+# The bare `.env*.local` pattern does NOT match a trailing .bak suffix.
+.env.local*
+*.env.bak
+
+# Data exports — creator PII, public repo.
+exports/
+
+# UI before/after captures — these show real creator handles and names,
+# the same PII reason exports/ is ignored. Kept on disk, not committed.
+docs/screenshots/
+
+# macOS
+.DS_Store

@@ -1,69 +1,62 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { Stage, Platform, Tier, Priority } from '@/types/database'
+import type { Stage } from '@/types/database'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 export const STAGES: Stage[] = [
-  'Prospecting','Contacted','Responded','Negotiating',
-  'Deal Closed','Live','Completed','Archived'
+  'prospecting','contacted','responded','negotiating',
+  'closed','live','completed','archived',
 ]
 
-export const STAGE_COLORS: Record<Stage, string> = {
-  'Prospecting': 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  'Contacted':   'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  'Responded':   'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  'Negotiating': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  'Deal Closed': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'Live':        'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-  'Completed':   'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  'Archived':    'bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500',
+export const STAGE_LABELS: Record<Stage, string> = {
+  prospecting: 'Prospecting',
+  contacted:   'Contacted',
+  responded:   'Responded',
+  negotiating: 'Negotiating',
+  closed:      'Closed',
+  live:        'Live',
+  completed:   'Completed',
+  archived:    'Archived',
 }
+export const stageLabel = (s: Stage | null | undefined) => (s ? STAGE_LABELS[s] ?? s : '—')
 
-export const PLATFORM_COLORS: Record<Platform, string> = {
-  instagram: '#E1306C',
-  tiktok:    '#69C9D0',
-  youtube:   '#FF0000',
-  twitter:   '#1DA1F2',
-  linkedin:  '#0A66C2',
+export const STAGE_COLORS: Record<Stage, string> = {
+  prospecting: 'bg-muted text-muted-foreground',
+  contacted:   'bg-primary/10 text-primary',
+  responded:   'bg-primary/10 text-primary',
+  negotiating: 'bg-warning/10 text-warning',
+  closed:      'bg-success/10 text-success',
+  live:        'bg-success/10 text-success',
+  completed:   'bg-success/10 text-success',
+  archived:    'bg-muted text-muted-foreground',
 }
 
 // Hex accents per stage — used for the pipeline rail + funnel chart.
 export const STAGE_HEX: Record<Stage, string> = {
-  'Prospecting': '#94a3b8',
-  'Contacted':   '#3b82f6',
-  'Responded':   '#8b5cf6',
-  'Negotiating': '#f59e0b',
-  'Deal Closed': '#10b981',
-  'Live':        '#06b6d4',
-  'Completed':   '#22c55e',
-  'Archived':    '#64748b',
+  prospecting: '#94A3B8',
+  contacted:   '#3157D5',
+  responded:   '#2F6FE0',
+  negotiating: '#B7791F',
+  closed:      '#0F766E',
+  live:        '#0F766E',
+  completed:   '#12867D',
+  archived:    '#8A94A6',
 }
 
-export const TIER_STYLES: Record<Tier, string> = {
-  A: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-  B: 'bg-sky-500/15 text-sky-400 border border-sky-500/30',
-  C: 'bg-slate-500/15 text-slate-400 border border-slate-500/30',
-}
+// "Past-contacted" stages — used for niche performance + team metrics (spec §9).
+export const ADVANCED_STAGES: Stage[] = ['responded', 'negotiating', 'closed', 'live', 'completed']
 
-export const TIER_HEX: Record<Tier, string> = { A: '#10b981', B: '#0ea5e9', C: '#64748b' }
-
-export const ENG_STYLES: Record<string, string> = {
-  high:          'text-emerald-400',
-  good:          'text-green-400',
-  ok:            'text-amber-400',
-  low:           'text-slate-400',
-  viral_outlier: 'text-fuchsia-400',
-  anomalous:     'text-rose-400',
-}
-
-export const PRIORITY_STYLES: Record<Priority, string> = {
-  high:   'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-  medium: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
-  low:    'bg-slate-500/15 text-slate-400 border border-slate-500/30',
-}
+export const FOLLOWER_BUCKETS = [
+  { key: '', label: 'All sizes', min: undefined, max: undefined },
+  { key: '<1K', label: '< 1K', min: 0, max: 1000 },
+  { key: '1K-10K', label: '1K – 10K', min: 1000, max: 10000 },
+  { key: '10K-50K', label: '10K – 50K', min: 10000, max: 50000 },
+  { key: '50K-100K', label: '50K – 100K', min: 50000, max: 100000 },
+  { key: '100K-500K', label: '100K – 500K', min: 100000, max: 500000 },
+] as const
 
 export const NICHE_LABELS: Record<string, string> = {
   web_dev: 'Web Dev',
@@ -77,7 +70,24 @@ export const NICHE_LABELS: Record<string, string> = {
 export const nicheLabel = (n: string | null | undefined) =>
   n ? (NICHE_LABELS[n] ?? n.replace(/_/g, ' ')) : '—'
 
-export const NICHE_HEX = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#a3e635']
+// Chart series palette, derived from the product accents. Ordered so adjacent
+// series stay distinguishable in greyscale as well as in colour.
+export const CHART_HEX = ['#3157D5', '#0F766E', '#B7791F', '#5B7CE5', '#3F9E95', '#C9362B', '#8A94A6']
+export const NICHE_HEX = CHART_HEX
+
+// CSV export — agencies live in client decks/spreadsheets. Shared so Influencers,
+// Pipeline, and Deals all export the same safe way (formula-injection guarded).
+export function downloadCsv(filename: string, rows: Record<string, unknown>[], cols: { key: string; label?: string }[]) {
+  const esc = (v: unknown) => {
+    const cell = String(v ?? '').replace(/"/g, '""')
+    const safe = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell
+    return /[",\n]/.test(safe) ? `"${safe}"` : safe
+  }
+  const head = cols.map(c => c.label ?? c.key).join(',')
+  const body = rows.map(r => cols.map(c => esc(r[c.key])).join(',')).join('\n')
+  const url = URL.createObjectURL(new Blob([head + '\n' + body], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
+}
 
 export function formatFollowers(n: number | null): string {
   if (!n) return '—'
@@ -117,13 +127,29 @@ export function getInitials(name: string): string {
 
 export function avatarColor(name: string): string {
   const colors = [
-    'bg-violet-100 text-violet-700',
-    'bg-blue-100 text-blue-700',
-    'bg-emerald-100 text-emerald-700',
-    'bg-amber-100 text-amber-700',
-    'bg-rose-100 text-rose-700',
-    'bg-cyan-100 text-cyan-700',
+    'bg-primary/10 text-primary',
+    'bg-success/10 text-success',
+    'bg-warning/10 text-warning',
+    'bg-muted text-muted-foreground',
   ]
   const index = name.charCodeAt(0) % colors.length
   return colors[index]
+}
+
+// Catalog rows can come from several platforms (migration 0010), so UI must not
+// assume Instagram. Falls back to Instagram for legacy rows with no platform.
+export const PLATFORM_LABELS: Record<string, string> = {
+  instagram: 'Instagram', youtube: 'YouTube', github: 'GitHub',
+  bluesky: 'Bluesky', devto: 'DEV', other: 'profile',
+}
+export function platformLabel(platform?: string | null): string {
+  return PLATFORM_LABELS[platform || 'instagram'] ?? 'profile'
+}
+
+/** Immutably toggle a value in a Set — used by every multi-select in the UI. */
+export function toggleIn<T>(set: Set<T>, value: T): Set<T> {
+  const next = new Set(set)
+  if (next.has(value)) next.delete(value)
+  else next.add(value)
+  return next
 }

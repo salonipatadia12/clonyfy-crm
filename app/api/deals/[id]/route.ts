@@ -1,17 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateDeal } from '@/lib/db'
+import { requireCtx, getDeal, updateDeal, deleteDeal } from '@/lib/data'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await requireCtx()
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const { id } = await params
-  const dealId = Number(id)
-  if (!Number.isInteger(dealId) || dealId <= 0) {
-    return NextResponse.json({ error: 'invalid id' }, { status: 400 })
+  try {
+    return NextResponse.json({ deal: await getDeal(ctx.db, ctx.profile, id) })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'failed'
+    return NextResponse.json({ error: msg }, { status: msg === 'forbidden' ? 403 : 404 })
   }
-  const body = await req.json()
-  const deal = updateDeal(dealId, body)
-  if (!deal) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  return NextResponse.json({ deal })
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await requireCtx()
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const { id } = await params
+  try {
+    return NextResponse.json({ deal: await updateDeal(ctx.db, ctx.profile, id, await req.json()) })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'failed'
+    return NextResponse.json({ error: msg }, { status: msg === 'forbidden' ? 403 : 400 })
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await requireCtx()
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const { id } = await params
+  try {
+    return NextResponse.json(await deleteDeal(ctx.db, ctx.profile, id))
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'failed'
+    return NextResponse.json({ error: msg }, { status: msg === 'forbidden' ? 403 : 400 })
+  }
 }

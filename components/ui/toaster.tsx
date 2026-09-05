@@ -7,7 +7,7 @@ export function Toaster() {
   const { resolvedTheme } = useTheme()
   return (
     <Sonner
-      theme={(resolvedTheme as "light" | "dark") ?? "dark"}
+      theme={(resolvedTheme as "light" | "dark") ?? "light"}
       position="bottom-right"
       richColors
       toastOptions={{

@@ -1,37 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listInfluencers, type ListParams } from '@/lib/db'
+import { requireCtx, listInfluencers, type ListParams } from '@/lib/data'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function arr(v: string | null): string[] | undefined {
-  if (!v) return undefined
-  const parts = v.split(',').map(s => s.trim()).filter(Boolean)
-  return parts.length ? parts : undefined
-}
-function num(v: string | null): number | undefined {
-  if (v == null || v === '') return undefined
-  const n = Number(v)
-  return Number.isFinite(n) ? n : undefined
-}
-
 export async function GET(req: NextRequest) {
+  const ctx = await requireCtx()
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
   const sp = req.nextUrl.searchParams
+  const num = (k: string) => (sp.get(k) != null && sp.get(k) !== '' ? Number(sp.get(k)) : undefined)
   const params: ListParams = {
     search: sp.get('search') || undefined,
-    niche: arr(sp.get('niche')),
-    stage: arr(sp.get('stage')),
-    market: arr(sp.get('market')),
-    accountType: arr(sp.get('accountType')),
+    niche: sp.get('niche') || undefined,
+    country: sp.get('country') || undefined,
+    minFollowers: num('minFollowers'),
+    maxFollowers: num('maxFollowers'),
     verifiedOnly: sp.get('verifiedOnly') === 'true',
-    inPipeline: sp.get('inPipeline') === 'true' || undefined,
-    notInPipeline: sp.get('notInPipeline') === 'true' || undefined,
-    minFollowers: num(sp.get('minFollowers')),
-    maxFollowers: num(sp.get('maxFollowers')),
+    hideInPipeline: sp.get('hideInPipeline') === 'true' || sp.get('notInPipeline') === 'true',
+    contactStatus: sp.get('contactStatus') || undefined,
+    hasPhone: sp.get('hasPhone') === 'true',
+    hasEmail: sp.get('hasEmail') === 'true',
+    verificationStatus: sp.get('verificationStatus') || undefined,
+    handles: sp.get('handles') ? sp.get('handles')!.split(',').map(h => h.trim()).filter(Boolean) : undefined,
     sort: sp.get('sort') || undefined,
     order: (sp.get('order') as 'asc' | 'desc') || undefined,
-    page: num(sp.get('page')),
-    pageSize: num(sp.get('pageSize')),
+    page: num('page'),
+    pageSize: num('pageSize'),
   }
-  return NextResponse.json(listInfluencers(params))
+  try {
+    return NextResponse.json(await listInfluencers(ctx.db, ctx.profile, params))
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 500 })
+  }
 }
