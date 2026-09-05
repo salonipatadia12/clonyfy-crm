@@ -184,28 +184,45 @@ test('at most one offer exists per relationship', async () => {
 test('the seeded scenario covers the states the UI has views for', async () => {
   const one = async (sql) => (await db.query(sql, [runId])).rows
   const stages = await one('select distinct stage from campaign_creators where demo_run_id = $1')
-  assert.ok(stages.length >= 10, `only ${stages.length} distinct stages seeded`)
+  assert.ok(stages.length === 5, `expected all 5 statuses, got ${stages.length}`)
 
-  const offerStatus = await one('select distinct status from offers where demo_run_id = $1')
-  for (const s of ['draft', 'sent', 'counter_offered', 'accepted', 'declined']) {
-    assert.ok(offerStatus.some(r => r.status === s), `no offer in "${s}"`)
+  for (const st of ['not_contacted', 'contacted', 'replied', 'interested', 'declined']) {
+    assert.ok(stages.some(r => r.stage === st), `nobody is "${st}"`)
   }
-  const offerType = await one('select distinct offer_type from offers where demo_run_id = $1')
-  for (const t of ['gifted', 'flat_fee', 'commission', 'flat_plus_commission', 'custom']) {
-    assert.ok(offerType.some(r => r.offer_type === t), `no "${t}" offer`)
-  }
-  const approval = await one('select distinct approval_state from deliverables where demo_run_id = $1')
-  for (const a of ['planned', 'submitted', 'changes_requested', 'approved', 'published']) {
-    assert.ok(approval.some(r => r.approval_state === a), `no deliverable in "${a}"`)
-  }
-  const channels = await one('select distinct channel from outreach_activities where demo_run_id = $1')
+
+  const channels = await one('select distinct outreach_channel from campaign_creators where demo_run_id = $1')
   for (const ch of ['instagram_dm', 'email', 'phone']) {
-    assert.ok(channels.some(r => r.channel === ch), `no outreach on "${ch}"`)
+    assert.ok(channels.some(r => r.outreach_channel === ch), `no membership contacted by "${ch}"`)
   }
   const campStatus = await one('select distinct status from campaigns where demo_run_id = $1')
-  for (const s of ['planning', 'active', 'completed']) {
+  for (const s of ['active', 'completed']) {
     assert.ok(campStatus.some(r => r.status === s), `no campaign in "${s}"`)
   }
+})
+
+test('the dashboard has follow-ups to show, both due today and overdue', async () => {
+  const { rows: [r] } = await db.query(`
+    select count(*) filter (where next_follow_up = current_date)::int today,
+           count(*) filter (where next_follow_up < current_date)::int overdue
+      from campaign_creators where demo_run_id = $1`, [runId])
+  assert.ok(r.today > 0, 'nothing is due today')
+  assert.ok(r.overdue > 0, 'nothing is overdue')
+})
+
+test('only mid-conversation memberships carry a follow-up date', async () => {
+  // Chasing someone who already said yes or no is noise.
+  const { rows: [r] } = await db.query(`
+    select count(*)::int n from campaign_creators
+     where demo_run_id = $1 and next_follow_up is not null
+       and stage not in ('contacted', 'replied')`, [runId])
+  assert.equal(r.n, 0)
+})
+
+test('nobody is marked contacted without a channel recorded', async () => {
+  const { rows: [r] } = await db.query(`
+    select count(*)::int n from campaign_creators
+     where demo_run_id = $1 and stage <> 'not_contacted' and outreach_channel is null`, [runId])
+  assert.equal(r.n, 0)
 })
 
 test('published deliverables carry metrics and unpublished ones stay null', async () => {

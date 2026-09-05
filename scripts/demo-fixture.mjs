@@ -26,15 +26,6 @@ export const CLIENTS = [
     notes: 'Fictional client used for product demonstration. Seed-stage productivity software company. No real contract, contact or spend.',
   },
   {
-    key: 'canvasco',
-    name: 'DEMO — Canvas & Co.',
-    website: 'https://canvas-and-co.example',
-    primary_contact: 'Ibrahim Osei (fictional)',
-    contact_email: 'partnerships@canvas-and-co.example',
-    status: 'active',
-    notes: 'Fictional client used for product demonstration. Sells physical kit to design educators. No real contract, contact or spend.',
-  },
-  {
     key: 'launchcart',
     name: 'DEMO — LaunchCart',
     website: 'https://launchcart.example',
@@ -58,19 +49,6 @@ export const PRODUCTS = [
     price_note: '$12/mo · 30-day trial (fictional)',
     talking_points: ['Show the morning plan being generated', 'Say plainly that it is a paid tool'],
     prohibited_claims: 'Do not claim measured productivity gains. No numbers exist to support one.',
-  },
-  {
-    key: 'studiokit',
-    client: 'canvasco',
-    name: 'Creator Studio Kit',
-    product_url: 'https://canvas-and-co.example/studio-kit',
-    category: 'Physical product',
-    description: 'A desk kit of colour cards, grid pads and a stand, aimed at people who teach design. Fictional product for demonstration.',
-    target_customer: 'Design educators, bootcamp instructors and people who post teaching content.',
-    selling_points: ['Ships flat', 'Refill packs', 'Photographs well on camera'],
-    price_note: '$89 one-off (fictional)',
-    talking_points: ['Unbox on camera', 'Show it in an actual teaching setup'],
-    prohibited_claims: 'Do not describe the materials as recycled. They are not.',
   },
   {
     key: 'commerce',
@@ -112,31 +90,6 @@ export const CAMPAIGNS = [
     hashtags: ['ad', 'focusflow'],
     disclosure_required: 'Paid partnership label required on every post.',
     talking_points: ['Show the morning plan', 'Do not claim measured productivity gains'],
-  },
-  {
-    key: 'studio_beta',
-    name: 'DEMO — Creator Studio Educator Beta',
-    client: 'canvasco', product: 'studiokit',
-    status: 'planning',
-    objective: 'ugc',
-    objective_note: 'Put the kit in the hands of people who teach design and see what they do with it.',
-    startOffset: 12, endOffset: 70,
-    brief_niches: ['design'],
-    brief_min_followers: 8000, brief_max_followers: 150000,
-    brief_geo: 'us_preferred', brief_platforms: ['instagram'],
-    brief_entity_types: ['individual_creator'], brief_contact_pref: 'email',
-    brief_creator_target: 8,
-    brief_exclusions: 'No accounts that only repost other people’s work.',
-    brief_notes: 'Demo campaign, still being planned. Gifted only — no fee budget approved yet.',
-    offer_type: 'gifted', offer_gifted_product: 'Creator Studio Kit + one refill pack',
-    offer_currency: 'USD', budget_total: null,
-    deliverable_plan: [{ kind: 'post', count: 1 }, { kind: 'story', count: 2 }],
-    usage_rights: 'Organic only, fictional terms.',
-    approval_required: true, whitelisting: false,
-    cta: 'Swipe up for the educator bundle',
-    hashtags: ['gifted'],
-    disclosure_required: 'Gifted label required.',
-    talking_points: ['Unbox on camera', 'Show it in a real teaching setup'],
   },
   {
     key: 'partner_push',
@@ -197,19 +150,16 @@ export const CAMPAIGNS = [
  */
 export const ROSTER = [
   { campaign: 'focusflow_us', stages: [
-    'live', 'live', 'content_in_progress', 'agreed', 'negotiating',
-    'replied', 'contacted', 'content_in_progress', 'ready_to_contact', 'shortlisted',
-    'suggested', 'rejected',
-  ] },
-  { campaign: 'studio_beta', stages: [
-    'shortlisted', 'shortlisted', 'suggested', 'suggested', 'ready_to_contact', 'suggested',
+    'interested', 'interested', 'interested', 'replied', 'replied',
+    'contacted', 'contacted', 'contacted', 'not_contacted', 'not_contacted',
+    'declined',
   ] },
   { campaign: 'partner_push', stages: [
-    'contacted', 'contacted', 'contacted', 'replied', 'negotiating',
-    'ready_to_contact', 'shortlisted', 'suggested', 'rejected',
+    'contacted', 'contacted', 'replied', 'interested',
+    'not_contacted', 'not_contacted', 'declined',
   ] },
   { campaign: 'summer_sprint', stages: [
-    'completed', 'completed', 'completed', 'live',
+    'interested', 'interested', 'contacted', 'not_contacted',
   ] },
 ]
 
@@ -221,8 +171,7 @@ export const ROSTER = [
 export const SHARED_CREATOR_SLOTS = [
   { a: { campaign: 'focusflow_us', slot: 0 },  b: { campaign: 'partner_push', slot: 0 } },
   { a: { campaign: 'focusflow_us', slot: 3 },  b: { campaign: 'partner_push', slot: 3 } },
-  { a: { campaign: 'focusflow_us', slot: 6 },  b: { campaign: 'summer_sprint', slot: 0 } },
-  { a: { campaign: 'partner_push', slot: 7 },  b: { campaign: 'studio_beta', slot: 2 } },
+  { a: { campaign: 'focusflow_us', slot: 5 },  b: { campaign: 'summer_sprint', slot: 0 } },
 ]
 
 export const TEMPLATES = [
@@ -262,12 +211,6 @@ export const TEMPLATES = [
     campaign: null, product: null,
     subject: 'Rates for {{campaign}}',
     body: `Hi {{first_name}},\n\nThanks for asking. For {{campaign}} we've budgeted {{offer}} for the deliverables in the brief.\n\nIf your rate sits above that, send it over — I'd rather see your number than guess.\n\n{{sender_name}}`,
-    follow_ups: [],
-  },
-  {
-    key: 'deliverable_reminder', name: 'DEMO — Deliverable reminder', channel: 'instagram_dm',
-    campaign: null, product: null,
-    body: `Hi {{first_name}} — quick reminder that the {{campaign}} content is due shortly. Shout if you need longer, that's completely fine.`,
     follow_ups: [],
   },
 ]

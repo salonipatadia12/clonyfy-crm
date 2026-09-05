@@ -143,21 +143,17 @@ async function upsert(c, table, key, cols, runId) {
 // Per-stage recipes — what history a relationship at a given stage should have
 // ---------------------------------------------------------------------------
 
-/** Outreach, offer and deliverable shape implied by a stage. */
+/**
+ * What history each status implies.
+ *
+ * "Not contacted" has none, which is the point — it is the pile of work.
+ */
 const STAGE_RECIPE = {
-  suggested:           { outreach: 0, offer: null,                 deliverables: [] },
-  shortlisted:         { outreach: 0, offer: 'draft',              deliverables: [] },
-  ready_to_contact:    { outreach: 0, offer: null,                 deliverables: [] },
-  contacted:           { outreach: 1, offer: null,                 deliverables: [] },
-  replied:             { outreach: 2, offer: 'sent',               deliverables: [] },
-  negotiating:         { outreach: 3, offer: 'counter_offered',    deliverables: [] },
-  // The listed values ARE the approval states, so the board stage and the
-  // deliverable state can never contradict each other.
-  agreed:              { outreach: 3, offer: 'accepted',           deliverables: ['planned', 'planned'] },
-  content_in_progress: { outreach: 3, offer: 'accepted',           deliverables: ['submitted', 'changes_requested'] },
-  live:                { outreach: 3, offer: 'accepted',           deliverables: ['published', 'planned'] },
-  completed:           { outreach: 3, offer: 'accepted',           deliverables: ['published', 'approved'] },
-  rejected:            { outreach: 2, offer: 'declined',           deliverables: [] },
+  not_contacted: { outreach: 0, offer: null,       deliverables: [] },
+  contacted:     { outreach: 1, offer: null,       deliverables: [] },
+  replied:       { outreach: 2, offer: 'sent',     deliverables: [] },
+  interested:    { outreach: 3, offer: 'accepted', deliverables: ['published', 'planned'] },
+  declined:      { outreach: 2, offer: 'declined', deliverables: [] },
 }
 
 const OFFER_TYPE_CYCLE = ['gifted', 'flat_fee', 'commission', 'flat_plus_commission', 'custom']
@@ -344,13 +340,18 @@ async function main() {
         }, brief)
 
         const age = 6 + hashInt(ccKey, 40)          // days since added
-        const advanced = ['contacted', 'replied', 'negotiating', 'agreed',
-                          'content_in_progress', 'live', 'completed'].includes(stage)
-        // Follow-up dates: some due today, some overdue, some upcoming.
-        const fuBucket = hashInt(ccKey + 'fu', 4)
-        const nextFollowUp = !advanced || ['live', 'completed'].includes(stage)
-          ? null
-          : isoDate([0, -3, 2, -9][fuBucket])
+        // Anyone past "not contacted" was, by definition, contacted — including
+        // someone who declined.
+        const advanced = stage !== 'not_contacted'
+        // Deliberately weighted towards "today" and "late", so the dashboard's
+        // follow-up list has something in it the moment the seed finishes.
+        // Only someone mid-conversation needs chasing, so "interested" and
+        // "declined" carry no follow-up date at all.
+        const nextFollowUp = stage === 'contacted' || stage === 'replied'
+          // Indexed by slot rather than hashed, so the spread across
+          // today / overdue / upcoming is even and predictable.
+          ? isoDate([0, -4, 0, -11, 3][i % 5])
+          : null
 
         const ccId = await upsert(c, 'campaign_creators', ccKey, {
           ...base, demo_key: ccKey, campaign_id: campaignId[r.campaign],
@@ -359,6 +360,10 @@ async function main() {
           match_reasons: JSON.stringify(match.reasons),
           next_follow_up: nextFollowUp,
           last_touch: advanced ? isoTs(-hashInt(ccKey + 'lt', 12) - 1) : null,
+          // The two plain fields the campaign row shows. A creator with no
+          // email is never given one — the channel follows what is on record.
+          outreach_channel: advanced ? (cr.email ? 'email' : cr.phone && hashInt(ccKey, 3) === 0 ? 'phone' : 'instagram_dm') : null,
+          last_contacted_on: advanced ? isoDate(-hashInt(ccKey + 'lt', 12) - 1) : null,
           notes: NOTE_FOR_STAGE(stage, cr.person_name),
           source: 'suggested', added_by: actor.id,
           added_at: isoTs(-age), updated_at: new Date(),
@@ -394,7 +399,7 @@ async function main() {
         }
 
         // -- offer ---------------------------------------------------------
-        if (recipe.offer && !(recipe.offer === 'draft' && hashInt(ccKey, 2))) {
+        if (recipe.offer) {
           const offKey = `${ccKey}:offer`
           const type = OFFER_TYPE_CYCLE[hashInt(offKey, OFFER_TYPE_CYCLE.length)]
           // The stage decides the status, so the board and the offer can never
@@ -495,17 +500,11 @@ async function main() {
 function NOTE_FOR_STAGE(stage, name) {
   const first = name.split(' ')[0]
   switch (stage) {
-    case 'suggested': return 'Surfaced by search against the brief. Not yet reviewed by a human.'
-    case 'shortlisted': return `${first} looks like a fit on niche and audience size. Waiting on a second opinion before we reach out.`
-    case 'ready_to_contact': return 'Brief approved internally. Ready for the first message.'
+    case 'not_contacted': return `${first} looks like a fit on niche and audience size. Nobody has reached out yet.`
     case 'contacted': return 'First message logged. No reply yet.'
-    case 'replied': return `${first} replied and wants more detail before committing.`
-    case 'negotiating': return 'Discussing rate and deliverable count.'
-    case 'agreed': return 'Terms agreed (simulated). Content brief sent.'
-    case 'content_in_progress': return 'First draft submitted, in review.'
-    case 'live': return 'Content is live (simulated).'
-    case 'completed': return 'Campaign finished and content delivered (simulated).'
-    case 'rejected': return 'Not proceeding — mismatch on audience or timing.'
+    case 'replied': return `${first} replied and asked for more detail before deciding.`
+    case 'interested': return 'Wants to go ahead (simulated).'
+    case 'declined': return 'Not proceeding — already working with a competing brand this quarter.'
     default: return null
   }
 }

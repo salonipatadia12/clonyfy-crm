@@ -3,13 +3,14 @@ import { cookies } from 'next/headers'
 import type { Profile } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scoreMatch, briefFromCampaign, type MatchReason } from '@/lib/match'
-import { CC_STAGES, CLOSED_STAGES, WON_STAGES, ccStageLabel } from '@/lib/domain'
+import { CC_STAGES, CLOSED_STAGES, ccStageLabel } from '@/lib/domain'
 import { CREATOR_VIEWS, DEFAULT_CREATOR_VIEW, type CreatorViewKey } from '@/lib/crm-views'
 import { queuesFor, OUTREACH_QUEUE_META } from '@/lib/outreach-queues'
 import type {
   Client, Product, Campaign, CampaignRow, CampaignCreator, CampaignStats,
   CreatorRow, CreatorListResponse, CreatorDetailResponse,
   DeliverableRow, OfferRow, OutreachActivityRow, TodayResponse, TemplateRow,
+  DashboardResponse,
   AnalyticsFilters, AnalyticsPayload, OutreachQueue, OutreachRow,
   CreatorReviewRow,
 } from '@/types/campaign'
@@ -256,8 +257,8 @@ function buildStats(
   const t = todayStr()
   const out = new Map<string, CampaignStats>()
   const blank = (): CampaignStats => ({
-    creators: 0, shortlisted: 0, contacted: 0, replied: 0, agreed: 0, live: 0,
-    completed: 0, rejected: 0, byStage: {}, followUpsOverdue: 0,
+    creators: 0, notContacted: 0, contacted: 0, replied: 0, interested: 0, declined: 0,
+    byStage: {}, followUpsOverdue: 0,
     deliverablesTotal: 0, deliverablesPublished: 0, deliverablesOverdue: 0,
     awaitingApproval: 0, committedSpend: null, currency: 'USD',
   })
@@ -267,16 +268,13 @@ function buildStats(
     const s = get(r.campaign_id)
     s.creators++
     s.byStage[r.stage] = (s.byStage[r.stage] ?? 0) + 1
-    if (r.stage === 'shortlisted') s.shortlisted++
-    // "contacted" counts everyone who has been reached at least once, i.e. is
-    // at or past the contacted stage — not just those sitting in that stage.
-    const idx = CC_STAGES.indexOf(r.stage as never)
-    if (idx >= CC_STAGES.indexOf('contacted') && r.stage !== 'rejected') s.contacted++
-    if (idx >= CC_STAGES.indexOf('replied') && r.stage !== 'rejected') s.replied++
-    if (WON_STAGES.includes(r.stage as never)) s.agreed++
-    if (r.stage === 'live') s.live++
-    if (r.stage === 'completed') s.completed++
-    if (r.stage === 'rejected') s.rejected++
+    // One influencer sits in exactly one status, so these six numbers add up
+    // to the total — no "at or past" arithmetic to explain.
+    if (r.stage === 'not_contacted') s.notContacted++
+    if (r.stage === 'contacted') s.contacted++
+    if (r.stage === 'replied') s.replied++
+    if (r.stage === 'interested') s.interested++
+    if (r.stage === 'declined') s.declined++
     if (r.next_follow_up && r.next_follow_up < t && !CLOSED_STAGES.includes(r.stage as never)) s.followUpsOverdue++
   }
   for (const d of deliverables) {
@@ -318,8 +316,8 @@ export async function listCampaignsV2(db: Db, p: Profile): Promise<Campaign[]> {
   ])
   const stats = buildStats(ccs ?? [], dlv ?? [], offs ?? [], ccToCampaign)
   const blank: CampaignStats = {
-    creators: 0, shortlisted: 0, contacted: 0, replied: 0, agreed: 0, live: 0, completed: 0,
-    rejected: 0, byStage: {}, followUpsOverdue: 0, deliverablesTotal: 0, deliverablesPublished: 0,
+    creators: 0, notContacted: 0, contacted: 0, replied: 0, interested: 0, declined: 0,
+    byStage: {}, followUpsOverdue: 0, deliverablesTotal: 0, deliverablesPublished: 0,
     deliverablesOverdue: 0, awaitingApproval: 0, committedSpend: null, currency: 'USD',
   }
   return (rows ?? []).map(r => ({
@@ -344,8 +342,8 @@ export async function getCampaignV2(db: Db, p: Profile, id: string): Promise<Cam
   ]) : [{ data: [] }, { data: [] }]
   const stats = buildStats(ccs ?? [], dlv ?? [], offs ?? [], ccToCampaign)
   const blank: CampaignStats = {
-    creators: 0, shortlisted: 0, contacted: 0, replied: 0, agreed: 0, live: 0, completed: 0,
-    rejected: 0, byStage: {}, followUpsOverdue: 0, deliverablesTotal: 0, deliverablesPublished: 0,
+    creators: 0, notContacted: 0, contacted: 0, replied: 0, interested: 0, declined: 0,
+    byStage: {}, followUpsOverdue: 0, deliverablesTotal: 0, deliverablesPublished: 0,
     deliverablesOverdue: 0, awaitingApproval: 0, committedSpend: null, currency: 'USD',
   }
   return {
@@ -452,7 +450,7 @@ export async function deleteCampaignV2(db: Db, p: Profile, id: string) {
 // Campaign creators — the relationship
 // ===========================================================================
 
-const CC_COLS = 'id, campaign_id, influencer_id, handle, stage, owner_id, match_score, match_reasons, next_follow_up, last_touch, notes, source, added_at, demo_run_id'
+const CC_COLS = 'id, campaign_id, influencer_id, handle, stage, owner_id, match_score, match_reasons, next_follow_up, last_touch, notes, source, added_at, demo_run_id, outreach_channel, last_contacted_on'
 const CREATOR_JOIN_COLS = 'id, handle, full_name, follower_count, niche, platform, profile_url, email, phone, geo_status, contact_status, entity_type, qualification_status, verification_status'
 
 /**
@@ -522,6 +520,8 @@ async function hydrateCampaignCreators(
       match_reasons: Array.isArray(r.match_reasons) ? (r.match_reasons as MatchReason[]) : [],
       next_follow_up: (r.next_follow_up as string) ?? null,
       last_touch: (r.last_touch as string) ?? null,
+      outreach_channel: (r.outreach_channel as string) ?? null,
+      last_contacted_on: (r.last_contacted_on as string) ?? null,
       notes: (r.notes as string) ?? null,
       source: (r.source as string) ?? null,
       added_at: r.added_at as string,
@@ -587,7 +587,7 @@ export async function addCreatorsToCampaign(
   const ids = [...new Set(input.influencerIds.filter(Boolean))].slice(0, 500)
   if (!ids.length) return { added: 0, alreadyPresent: 0, skipped: [] }
 
-  const stage = CC_STAGES.includes(input.stage as never) ? input.stage! : 'shortlisted'
+  const stage = CC_STAGES.includes(input.stage as never) ? input.stage! : 'not_contacted'
   const { data: creators } = await db.from('influencers')
     .select(`${CREATOR_JOIN_COLS}, is_verified`).eq('workspace_id', p.workspace_id).in('id', ids)
   const found = new Map((creators ?? []).map(c => [c.id, c]))
@@ -651,6 +651,15 @@ export async function updateCampaignCreator(
   if ('next_follow_up' in patch) set.next_follow_up = str(patch.next_follow_up)
   if ('notes' in patch) set.notes = str(patch.notes)
   if ('match_score' in patch) set.match_score = int(patch.match_score)
+  // The five fields the simplified campaign row stores.
+  if ('outreach_channel' in patch) {
+    const ch = str(patch.outreach_channel)
+    if (ch && !['instagram_dm', 'email', 'phone'].includes(ch)) {
+      throw new Error(`"${ch}" is not a channel we track.`)
+    }
+    set.outreach_channel = ch
+  }
+  if ('last_contacted_on' in patch) set.last_contacted_on = str(patch.last_contacted_on)
 
   if (Object.keys(set).length > 1) set.last_touch = nowIso()
   const { error } = await db.from('campaign_creators').update(set).eq('workspace_id', p.workspace_id).eq('id', id)
@@ -783,6 +792,7 @@ export interface CreatorListParams {
   entityType?: string
   qualification?: string
   campaignId?: string       // members of this campaign
+  ccStage?: string          // members sitting at this campaign status
   notInCampaignId?: string  // exclude members of this campaign
   notForClientId?: string   // exclude creators previously used for this client
   ownerId?: string
@@ -855,9 +865,12 @@ export async function listCreators(db: Db, p: Profile, params: CreatorListParams
   let restrictTo: string[] | null = null
   let exclude: Set<string> | null = null
 
-  if (params.campaignId || view === 'in_campaigns') {
+  if (params.campaignId || params.ccStage || view === 'in_campaigns') {
     let mq = db.from('campaign_creators').select('influencer_id').eq('workspace_id', p.workspace_id)
     if (params.campaignId) mq = mq.eq('campaign_id', params.campaignId)
+    // Resolved server-side, so "Contacted" means every contacted influencer in
+    // the workspace — not just the ones on the page you happen to be looking at.
+    if (params.ccStage) mq = mq.eq('stage', params.ccStage)
     const { data } = await mq
     restrictTo = [...new Set((data ?? []).map(r => r.influencer_id))]
     if (!restrictTo.length) {
@@ -935,7 +948,7 @@ async function countCatalog(db: Db, p: Profile): Promise<number> {
 async function attachMemberships(db: Db, p: Profile, rows: CreatorRow[]): Promise<CreatorRow[]> {
   if (!rows.length) return rows
   const { data: ccs } = await db.from('campaign_creators')
-    .select('influencer_id, campaign_id, stage')
+    .select('id, influencer_id, campaign_id, stage')
     .eq('workspace_id', p.workspace_id).in('influencer_id', rows.map(r => r.id))
   if (!ccs?.length) return rows.map(r => ({ ...r, campaigns: [] }))
   const { data: camps } = await db.from('campaigns').select('id, name, client_id')
@@ -948,6 +961,7 @@ async function attachMemberships(db: Db, p: Profile, rows: CreatorRow[]): Promis
     if (!camp) continue
     const list = byCreator.get(cc.influencer_id) ?? []
     list.push({
+      membership_id: cc.id,
       campaign_id: cc.campaign_id,
       campaign_name: camp.name,
       stage: cc.stage,
@@ -1443,6 +1457,83 @@ export async function applyDeliverablePlan(db: Db, p: Profile, ccId: string): Pr
 // Today
 // ===========================================================================
 
+/**
+ * The dashboard: seven counts and three short lists.
+ *
+ * Every number is a count query against the catalog scope the Influencers page
+ * uses, so a number here and the list it links to can never disagree.
+ */
+export async function getDashboard(db: Db, p: Profile): Promise<DashboardResponse> {
+  const t = todayStr()
+  const showDemo = await demoVisible()
+
+  const catalog = (extra?: (q: PgQuery) => PgQuery) => {
+    let q = applyCatalogScope(
+      db.from('influencers').select('id', { count: 'exact', head: true }) as unknown as PgQuery,
+      p.workspace_id)
+    if (extra) q = extra(q)
+    return q as unknown as Promise<{ count: number | null }>
+  }
+
+  const [total, withEmail, withPhone, usBased, campaignsAll, ccs] = await Promise.all([
+    catalog(),
+    catalog(q => q.not('email', 'is', null)),
+    catalog(q => q.not('phone', 'is', null)),
+    catalog(q => q.in('geo_status', ['confirmed_us', 'likely_us'])),
+    listCampaignsV2(db, p),
+    listCampaignCreators(db, p, {}),
+  ])
+
+  const notContacted = ccs.filter(c => c.stage === 'not_contacted').length
+  const followUpsDue = ccs.filter(c =>
+    c.next_follow_up && c.next_follow_up <= t && !CLOSED_STAGES.includes(c.stage as never)).length
+
+  const line = (c: CampaignCreator) => ({
+    campaign_creator_id: c.id,
+    campaign_id: c.campaign_id,
+    campaign_name: c.campaign_name ?? '',
+    handle: c.handle,
+    full_name: c.full_name,
+    stage: c.stage,
+    date: c.next_follow_up,
+    channel: c.outreach_channel ?? null,
+  })
+
+  return {
+    stats: {
+      total: total.count ?? 0,
+      withEmail: withEmail.count ?? 0,
+      withPhone: withPhone.count ?? 0,
+      usBased: usBased.count ?? 0,
+      notContacted,
+      followUpsDue,
+      activeCampaigns: campaignsAll.filter(c => c.status === 'active').length,
+    },
+    // Due today OR already overdue — an overdue follow-up is still due.
+    followUpsToday: ccs
+      .filter(c => c.next_follow_up && c.next_follow_up <= t && !CLOSED_STAGES.includes(c.stage as never))
+      .sort((a, b) => (a.next_follow_up ?? '').localeCompare(b.next_follow_up ?? ''))
+      .slice(0, 8).map(line),
+    recentReplies: ccs
+      .filter(c => c.stage === 'replied' || c.stage === 'interested')
+      .sort((a, b) => (b.last_contacted_on ?? '').localeCompare(a.last_contacted_on ?? ''))
+      .slice(0, 8).map(line),
+    activeCampaigns: campaignsAll
+      .filter(c => c.status === 'active')
+      .slice(0, 6)
+      .map(c => ({
+        id: c.id, name: c.name,
+        client_name: c.client_name, product_name: c.product_name,
+        creators: c.stats.creators,
+        contacted: c.stats.contacted,
+        replied: c.stats.replied,
+        interested: c.stats.interested,
+        demo_run_id: c.demo_run_id ?? null,
+      })),
+    demoRows: showDemo ? 0 : 0,
+  }
+}
+
 export async function getToday(db: Db, p: Profile): Promise<TodayResponse> {
   const showDemo = await demoVisible()
   const t = todayStr()
@@ -1544,7 +1635,8 @@ export async function getToday(db: Db, p: Profile): Promise<TodayResponse> {
     .map(c => ({
       id: c.id, name: c.name, client_name: c.client_name, product_name: c.product_name,
       status: c.status, creators: c.stats.creators, contacted: c.stats.contacted,
-      agreed: c.stats.agreed, live: c.stats.live, target: c.brief_creator_target,
+      replied: c.stats.replied, interested: c.stats.interested,
+      followUpsOverdue: c.stats.followUpsOverdue,
     }))
 
   return {

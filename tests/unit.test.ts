@@ -19,6 +19,7 @@ import {
   geoLabel, linkLabelFor, isInstagramUrl, channelReadiness, ccStageLabel,
   CC_STAGES, dueLabel, contactLabel, entityLabel, qualificationLabel,
   qualificationHelp, ORGANISATION_ENTITY_TYPES, ENTITY_TONE,
+  creatorStanding, standingLabel, STANDING_LABELS,
 } from '../lib/domain'
 import { toggleIn } from '../lib/utils'
 
@@ -379,19 +380,56 @@ test('every demo client and product uses a .example domain and a fictional conta
   }
 })
 
-test('demo campaigns are marked and cover planning, active and completed', () => {
-  const statuses = new Set(CAMPAIGNS.map(c => c.status))
-  assert.ok(statuses.has('planning'))
-  assert.ok(statuses.has('active'))
-  assert.ok(statuses.has('completed'))
+test('demo campaigns are marked and cover running and finished work', () => {
+  const statuses = new Set(CAMPAIGNS.map((c: { status: string }) => c.status))
+  assert.ok(statuses.has('active'), 'no active campaign to work in')
+  assert.ok(statuses.has('completed'), 'no finished campaign to look back on')
   for (const c of CAMPAIGNS) assert.match(c.name, /^DEMO — /)
 })
 
-test('the demo roster reaches every campaign stage', () => {
-  const seen = new Set(ROSTER.flatMap(r => r.stages))
+test('the demo roster reaches every campaign status', () => {
+  const seen = new Set(ROSTER.flatMap((r: { stages: string[] }) => r.stages))
   for (const stage of CC_STAGES) {
     assert.ok(seen.has(stage), `no demo relationship sits at "${stage}"`)
   }
+  // And nothing outside the five, so the fixture cannot drift from the schema.
+  for (const s of seen) assert.ok((CC_STAGES as readonly string[]).includes(s), `unknown status "${s}"`)
+})
+
+test('the five campaign statuses are the whole vocabulary', () => {
+  assert.deepEqual([...CC_STAGES],
+    ['not_contacted', 'contacted', 'replied', 'interested', 'declined'])
+  for (const s of CC_STAGES) {
+    assert.ok(ccStageLabel(s).length > 0)
+    assert.doesNotMatch(ccStageLabel(s), /_/, `"${s}" label is not plain English`)
+  }
+})
+
+test('an unreviewed organisation is never called a confirmed creator', () => {
+  const org = {
+    qualification_status: 'needs_review', review_state: 'unreviewed',
+    entity_type: 'brand', entity_source: 'heuristic',
+  }
+  assert.equal(creatorStanding(org), 'needs_review')
+  assert.equal(standingLabel(org), 'Needs review')
+
+  // A candidate is not confirmed either — nobody has looked at it.
+  assert.equal(creatorStanding({
+    qualification_status: 'candidate', review_state: 'unreviewed',
+    entity_type: 'unclassified', entity_source: 'heuristic',
+  }), 'needs_review')
+
+  // Only a human decision produces the other two readings.
+  assert.equal(creatorStanding({ review_state: 'approved' }), 'confirmed')
+  assert.equal(creatorStanding({ review_state: 'rejected' }), 'not_a_creator')
+  assert.equal(creatorStanding({
+    review_state: 'unreviewed', entity_type: 'brand', entity_source: 'human',
+  }), 'not_a_creator')
+})
+
+test('the three standings read as plain English', () => {
+  assert.deepEqual(Object.values(STANDING_LABELS),
+    ['Confirmed creator', 'Needs review', 'Not a creator'])
 })
 
 test('demo templates only use variables the renderer actually resolves', () => {

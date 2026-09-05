@@ -213,6 +213,7 @@ export interface CreatorFilters {
   entityType?: string
   qualification?: string
   campaignId?: string
+  ccStage?: string
   notInCampaignId?: string
   notForClientId?: string
   sort?: string

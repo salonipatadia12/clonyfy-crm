@@ -8,27 +8,27 @@ import {
 } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, LayoutGrid, List, Trash2, User } from 'lucide-react'
+import { GripVertical, LayoutGrid, List, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { MembershipEditor } from '@/components/crm/membership-editor'
 
 import { Table, TableScroll, THead, TH, TR, TD, Checkbox } from '@/components/ui/table'
 import { GeoBadge, ContactBadge, Followers, CreatorIdentity, NicheChip } from '@/components/crm/creator-badges'
 import { useUpdateCampaignCreator, useBulkUpdateCampaignCreators, useRemoveCampaignCreator } from '@/lib/queries'
-import { CC_STAGES, CC_STAGE_LABELS, ccStageLabel, dueLabel, offerTypeLabel } from '@/lib/domain'
-import { scoreTone } from '@/lib/match'
+import { CC_STAGES, CC_STAGE_LABELS, ccStageLabel, dueLabel } from '@/lib/domain'
 import { cn, nicheLabel, toggleIn } from '@/lib/utils'
 import type { CampaignCreator } from '@/types/campaign'
 
 export function CampaignBoard({
-  creators, members, onOpenCreator,
+  creators, members,
 }: {
   creators: CampaignCreator[]
   members: { id: string; name: string }[]
-  onOpenCreator: (cc: CampaignCreator) => void
 }) {
   const [view, setView] = useState<'board' | 'list'>('board')
+  const [editing, setEditing] = useState<CampaignCreator | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const update = useUpdateCampaignCreator()
   const bulk = useBulkUpdateCampaignCreators()
@@ -107,7 +107,7 @@ export function CampaignBoard({
       </div>
 
       {view === 'board'
-        ? <Board byStage={byStage} onMove={move} onOpen={onOpenCreator} />
+        ? <Board byStage={byStage} onMove={move} onOpen={setEditing} />
         : (
           <ListView
             creators={creators}
@@ -115,7 +115,7 @@ export function CampaignBoard({
             selected={selected}
             setSelected={setSelected}
             onMove={move}
-            onOpen={onOpenCreator}
+            onOpen={setEditing}
             onRemove={id => {
               if (!confirm('Remove this creator from this campaign? Their other campaigns are unaffected.')) return
               remove.mutate(id, { onSuccess: () => toast.success('Removed from this campaign.'), onError: e => toast.error(e.message) })
@@ -123,6 +123,9 @@ export function CampaignBoard({
             onAssign={(id, ownerId) => update.mutate({ id, patch: { owner_id: ownerId } }, { onError: e => toast.error(e.message) })}
           />
         )}
+
+      {/* Everything stored about one influencer in this campaign. */}
+      <MembershipEditor row={editing} open={!!editing} onOpenChange={o => { if (!o) setEditing(null) }} />
     </div>
   )
 }
@@ -217,7 +220,11 @@ function Card({ row, onMove, onOpen }: {
         >
           <GripVertical className="h-3.5 w-3.5" aria-hidden />
         </button>
-        <button onClick={() => onOpen(row)} className="min-w-0 flex-1 text-left">
+        <button
+          onClick={() => onOpen(row)}
+          aria-label={`Open ${row.handle}`}
+          className="min-w-0 flex-1 text-left"
+        >
           <CardBody row={row} />
         </button>
       </div>
@@ -236,10 +243,16 @@ function Card({ row, onMove, onOpen }: {
   )
 }
 
+/**
+ * What you need to see about someone at a glance: who they are, how big their
+ * audience is, how you can reach them, and whether they need chasing.
+ *
+ * Deliberately not shown: the fit score (it read "0% fit" on every card once a
+ * geography rule zeroed it, which told the user nothing), the match-reason
+ * sentence, and the offer and deliverable badges — those live on their own tabs.
+ */
 function CardBody({ row, dragging }: { row: CampaignCreator; dragging?: boolean }) {
   const due = dueLabel(row.next_follow_up)
-  const topReason = row.match_reasons.find(r => r.kind === 'positive')
-  const blocker = row.match_reasons.find(r => r.kind === 'blocker')
   return (
     <div className={cn('space-y-1.5', dragging && 'w-[240px] rounded-lg border border-primary bg-card p-2 shadow-lg')}>
       <CreatorIdentity handle={row.handle} fullName={row.full_name} platform={row.platform} />
@@ -248,32 +261,19 @@ function CardBody({ row, dragging }: { row: CampaignCreator; dragging?: boolean 
         {row.niche && <Badge tone="outline">{nicheLabel(row.niche)}</Badge>}
       </div>
       <div className="flex flex-wrap gap-1">
-        <GeoBadge status={row.geo_status} />
         <ContactBadge
           contactStatus={row.contact_status} email={row.email} phone={row.phone}
           profileUrl={row.profile_url} verification={row.verification_status}
         />
       </div>
-      {blocker
-        ? <Badge tone="danger">{blocker.label}</Badge>
-        : topReason && <p className="line-clamp-2 text-2xs text-muted-foreground">{topReason.detail}</p>}
-      <div className="flex flex-wrap items-center gap-1">
-        {row.match_score != null && (
-          <Badge tone={scoreTone(row.match_score) === 'success' ? 'success' : scoreTone(row.match_score) === 'info' ? 'info' : 'warning'}>
-            {row.match_score}% fit
-          </Badge>
-        )}
-        {row.offer && <Badge tone="neutral">{offerTypeLabel(row.offer.offer_type)} · {row.offer.status}</Badge>}
-        {row.deliverables_total > 0 && (
-          <Badge tone={row.deliverables_overdue ? 'danger' : 'neutral'}>
-            {row.deliverables_published}/{row.deliverables_total} published
-          </Badge>
-        )}
-        {due && <Badge tone={due.tone}>{due.text}</Badge>}
-      </div>
-      <p className="flex items-center gap-1 text-2xs text-muted-foreground">
-        <User className="h-3 w-3" aria-hidden />{row.owner_name ?? 'Unassigned'}
-      </p>
+      {(due || row.last_contacted_on) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {row.last_contacted_on && (
+            <span className="text-2xs text-muted-foreground">Last contacted {row.last_contacted_on}</span>
+          )}
+          {due && <Badge tone={due.tone}>{due.text}</Badge>}
+        </div>
+      )}
     </div>
   )
 }

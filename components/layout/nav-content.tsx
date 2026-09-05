@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { DemoToggle } from '@/components/crm/demo'
 import {
-  Sun, Moon, Users, Megaphone, Send, PackageCheck, BarChart3, CalendarCheck,
-  Building2, Radar, ShieldCheck, UserCog, FileText, History, Settings, LogOut,
+  Sun, Moon, Users, Megaphone, LayoutDashboard, Settings, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth, useIsAdmin } from '@/lib/auth-context'
@@ -15,29 +14,20 @@ import { Avatar } from '@/components/ui/avatar'
 import { NotificationsBell } from '@/components/layout/notifications-bell'
 
 /**
- * The operational hierarchy. Six primary destinations that match the job:
- * what needs doing, who to work with, what we're running, reaching out,
- * shipping the content, and did it work. Everything administrative is grouped
- * under Operations so it stops competing with daily work.
+ * Four destinations, matching the four things the product does: see what needs
+ * doing, work the list, run a campaign, configure the workspace.
+ *
+ * Outreach, offers and deliverables are not destinations — they are things you
+ * do to an influencer inside a campaign, so they live on the campaign page.
  */
 export const PRIMARY_NAV = [
-  { href: '/', label: 'Today', icon: CalendarCheck, exact: true },
-  { href: '/creators', label: 'Creators', icon: Users },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/influencers', label: 'Influencers', icon: Users },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/outreach', label: 'Outreach', icon: Send },
-  { href: '/deliverables', label: 'Deliverables', icon: PackageCheck },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
-export const OPERATIONS_NAV = [
-  { href: '/clients', label: 'Clients & products', icon: Building2, adminOnly: false },
-  { href: '/operations/data-quality', label: 'Data quality', icon: ShieldCheck, adminOnly: true },
-  { href: '/templates', label: 'Templates', icon: FileText, adminOnly: false },
-  { href: '/sourcing', label: 'Sourcing', icon: Radar, adminOnly: true },
-  { href: '/team', label: 'Team', icon: UserCog, adminOnly: true },
-  { href: '/audit', label: 'Audit', icon: History, adminOnly: true },
-  { href: '/account', label: 'Account', icon: Settings, adminOnly: false },
-]
+export const OPERATIONS_NAV: { href: string; label: string; icon: typeof Users; adminOnly: boolean }[] = []
 
 function NavLink({ href, label, icon: Icon, exact, onNavigate }: {
   href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean; onNavigate?: () => void
@@ -75,7 +65,6 @@ export function NavContent({ onNavigate, inDrawer }: { onNavigate?: () => void; 
   const isAdmin = useIsAdmin()
   const { resolvedTheme, setTheme } = useTheme()
 
-  const ops = OPERATIONS_NAV.filter(n => !n.adminOnly || isAdmin)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -95,10 +84,6 @@ export function NavContent({ onNavigate, inDrawer }: { onNavigate?: () => void; 
       <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-2.5 pb-4" aria-label="Main">
         <div className="space-y-0.5">
           {PRIMARY_NAV.map(item => <NavLink key={item.href} {...item} onNavigate={onNavigate} />)}
-        </div>
-        <div className="space-y-0.5">
-          <p className="px-2.5 pb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Operations</p>
-          {ops.map(item => <NavLink key={item.href} {...item} onNavigate={onNavigate} />)}
         </div>
       </nav>
 

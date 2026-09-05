@@ -68,7 +68,7 @@ test('the same creator can belong to several campaigns at once', async () => {
   const { creator, campaignA, campaignB } = fixture
   await db.query(
     `insert into campaign_creators (workspace_id, campaign_id, influencer_id, handle, stage, owner_id)
-     values ($1,$2,$3,$4,'shortlisted',$5), ($1,$6,$3,$4,'shortlisted',$5)`,
+     values ($1,$2,$3,$4,'not_contacted',$5), ($1,$6,$3,$4,'not_contacted',$5)`,
     [ws, campaignA, creator.id, creator.handle, admin, campaignB])
 
   const { rows } = await db.query(
@@ -82,7 +82,7 @@ test('adding the same creator to one campaign twice is rejected, not duplicated'
   await assert.rejects(
     () => db.query(
       `insert into campaign_creators (workspace_id, campaign_id, influencer_id, handle, stage)
-       values ($1,$2,$3,$4,'shortlisted')`,
+       values ($1,$2,$3,$4,'not_contacted')`,
       [ws, campaignA, creator.id, creator.handle]),
     /duplicate key|unique/i,
   )
@@ -91,7 +91,7 @@ test('adding the same creator to one campaign twice is rejected, not duplicated'
 test('moving a creator in one campaign does not change their stage in another', async () => {
   const { creator, campaignA, campaignB } = fixture
   await db.query(
-    `update campaign_creators set stage='negotiating' where workspace_id=$1 and campaign_id=$2 and influencer_id=$3`,
+    `update campaign_creators set stage='replied' where workspace_id=$1 and campaign_id=$2 and influencer_id=$3`,
     [ws, campaignA, creator.id])
 
   const { rows } = await db.query(
@@ -99,8 +99,8 @@ test('moving a creator in one campaign does not change their stage in another', 
       where workspace_id=$1 and influencer_id=$2 and campaign_id = any($3)`,
     [ws, creator.id, [campaignA, campaignB]])
   const byCampaign = Object.fromEntries(rows.map(r => [r.campaign_id, r.stage]))
-  assert.equal(byCampaign[campaignA], 'negotiating')
-  assert.equal(byCampaign[campaignB], 'shortlisted', 'campaign B must be untouched by a move in campaign A')
+  assert.equal(byCampaign[campaignA], 'replied')
+  assert.equal(byCampaign[campaignB], 'not_contacted', 'campaign B must be untouched by a move in campaign A')
 })
 
 test('each membership carries its own owner, score, follow-up and notes', async () => {
@@ -162,7 +162,7 @@ test('deleting a campaign removes its relationships and leaves the creator in th
     [ws, `ZZ Campaign C ${SUFFIX}`, client, product, admin])
   await db.query(
     `insert into campaign_creators (workspace_id, campaign_id, influencer_id, handle, stage)
-     values ($1,$2,$3,$4,'shortlisted')`, [ws, temp.id, creator.id, creator.handle])
+     values ($1,$2,$3,$4,'not_contacted')`, [ws, temp.id, creator.id, creator.handle])
 
   await db.query(`delete from campaigns where id=$1`, [temp.id])
 
@@ -311,7 +311,7 @@ test('campaign creators cannot reference a creator outside the workspace', async
   await assert.rejects(
     () => db.query(
       `insert into campaign_creators (workspace_id, campaign_id, influencer_id, handle, stage)
-       values ($1,$2,'00000000-0000-0000-0000-000000000000','ghost','shortlisted')`,
+       values ($1,$2,'00000000-0000-0000-0000-000000000000','ghost','not_contacted')`,
       [ws, fixture.campaignA]),
     /foreign key|violates/i,
   )

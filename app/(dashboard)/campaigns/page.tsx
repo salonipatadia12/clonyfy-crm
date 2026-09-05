@@ -138,8 +138,8 @@ function CampaignCard({ campaign: c }: { campaign: Campaign }) {
 
       <dl className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
         {[
-          ['Creators', s.creators], ['Contacted', s.contacted],
-          ['Agreed', s.agreed], ['Live', s.live],
+          ['Added', s.creators], ['Contacted', s.contacted],
+          ['Replied', s.replied], ['Interested', s.interested],
         ].map(([label, value]) => (
           <div key={label as string} className="rounded-md bg-muted/60 py-1.5">
             <dd className="text-sm font-semibold tnum">{formatNum(value as number)}</dd>
