@@ -21,6 +21,7 @@ export const GET = (req: NextRequest) =>
       entityType: sp.get('entityType') || undefined,
       qualification: sp.get('qualification') || undefined,
       campaignId: sp.get('campaignId') || undefined,
+      ccStage: sp.get('ccStage') || undefined,
       notInCampaignId: sp.get('notInCampaignId') || undefined,
       notForClientId: sp.get('notForClientId') || undefined,
       sort: sp.get('sort') || undefined,

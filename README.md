@@ -11,6 +11,21 @@ Sonner · Lucide.
 
 ---
 
+## What this is for
+
+1. Store influencers.
+2. Find their contact details.
+3. Assign them to a client's product campaign.
+4. Track whether they were contacted and whether they replied.
+
+Four screens: **Dashboard · Influencers · Campaigns · Settings**. Outreach,
+offers and deliverables are not destinations — they are things you do to an
+influencer inside a campaign, so they live on the campaign page.
+
+An influencer sits in exactly one of five statuses per campaign:
+`Not contacted → Contacted → Replied → Interested / Declined`. Five, not eleven,
+because those are the only distinctions the work actually turns on.
+
 ## The one idea that shapes everything
 
 **A creator's stage belongs to a campaign, not to the creator.**
@@ -97,6 +112,11 @@ count, engagement or performance. A missing number renders as "Not recorded", ne
 rows) and `fr` (260). Migration `0012` moved them to `language_code` and cleared
 `country`. Geography is now `geo_status` — `confirmed_us`, `likely_us`, `unverified_us`,
 `non_us`, `unknown` — each with a `geo_evidence` sentence saying why.
+
+**Three words, not six.** The influencer table reads *Confirmed creator*,
+*Needs review* or *Not a creator*. An organisation nobody has reviewed is
+"Needs review" — never "Confirmed". The six-value `qualification_status` still
+backs it, but it is not vocabulary the user has to learn.
 
 **"Qualified" means a person said so.** The derived `qualification_status` originally
 ended in `else 'qualified'`, so every record that had simply failed to match an

@@ -13,50 +13,43 @@ import type { BadgeTone } from '@/components/ui/badge'
 // ---------------------------------------------------------------------------
 // Campaign creator stages — the stage belongs to the (campaign, creator) pair.
 // ---------------------------------------------------------------------------
-export const CC_STAGES = [
-  'suggested', 'shortlisted', 'ready_to_contact', 'contacted', 'replied',
-  'negotiating', 'agreed', 'content_in_progress', 'live', 'completed', 'rejected',
-] as const
+/**
+ * The five statuses a campaign relationship can hold.
+ *
+ * Ordered as the work happens, which is also the order the campaign columns
+ * appear in. "Interested" and "Declined" are outcomes, not steps, so nothing
+ * follows them.
+ */
+export const CC_STAGES = ['not_contacted', 'contacted', 'replied', 'interested', 'declined'] as const
 export type CcStage = (typeof CC_STAGES)[number]
 
 export const CC_STAGE_LABELS: Record<CcStage, string> = {
-  suggested: 'Suggested',
-  shortlisted: 'Shortlisted',
-  ready_to_contact: 'Ready to contact',
+  not_contacted: 'Not contacted',
   contacted: 'Contacted',
   replied: 'Replied',
-  negotiating: 'Negotiating',
-  agreed: 'Agreed',
-  content_in_progress: 'Content in progress',
-  live: 'Live',
-  completed: 'Completed',
-  rejected: 'Rejected / archived',
+  interested: 'Interested',
+  declined: 'Declined',
 }
 export const ccStageLabel = (s: string | null | undefined) =>
   s ? (CC_STAGE_LABELS[s as CcStage] ?? s) : '—'
 
 export const CC_STAGE_TONE: Record<CcStage, BadgeTone> = {
-  suggested: 'neutral',
-  shortlisted: 'neutral',
-  ready_to_contact: 'info',
+  not_contacted: 'neutral',
   contacted: 'info',
-  replied: 'success',
-  negotiating: 'warning',
-  agreed: 'success',
-  content_in_progress: 'warning',
-  live: 'success',
-  completed: 'success',
-  rejected: 'neutral',
+  replied: 'warning',
+  interested: 'success',
+  declined: 'neutral',
 }
 
-/** Stages where the creator has been reached and the clock is running. */
-export const ACTIVE_OUTREACH_STAGES: CcStage[] = ['contacted', 'replied', 'negotiating']
-/** Stages that count as a won relationship. */
-export const WON_STAGES: CcStage[] = ['agreed', 'content_in_progress', 'live', 'completed']
-/** Stages that no longer need follow-up. */
-export const CLOSED_STAGES: CcStage[] = ['completed', 'rejected']
+/** Statuses where someone is waiting on a reply from us or from them. */
+export const ACTIVE_OUTREACH_STAGES: CcStage[] = ['contacted', 'replied']
+/** Statuses that count as a positive outcome. */
+export const WON_STAGES: CcStage[] = ['interested']
+/** Statuses that no longer need a follow-up. */
+export const CLOSED_STAGES: CcStage[] = ['interested', 'declined']
 
 export const ccStageIndex = (s: string) => CC_STAGES.indexOf(s as CcStage)
+
 
 // ---------------------------------------------------------------------------
 // Campaign metadata
@@ -188,6 +181,44 @@ export const ENTITY_TONE: Record<string, BadgeTone> = {
   business: 'warning', institution: 'warning', government: 'warning',
   publisher: 'warning', aggregator: 'warning', unclassified: 'neutral',
 }
+
+/**
+ * What the influencer table says about a record, in three words a person can
+ * act on. The underlying `qualification_status` keeps its six values for the
+ * review screen; this is the reading of it that the main table shows.
+ *
+ * An organisation that nobody has reviewed reads "Needs review", never
+ * "Confirmed creator" — the whole point of the distinction.
+ */
+export type CreatorStanding = 'confirmed' | 'needs_review' | 'not_a_creator'
+
+export const STANDING_LABELS: Record<CreatorStanding, string> = {
+  confirmed: 'Confirmed creator',
+  needs_review: 'Needs review',
+  not_a_creator: 'Not a creator',
+}
+export const STANDING_TONE: Record<CreatorStanding, BadgeTone> = {
+  confirmed: 'success', needs_review: 'warning', not_a_creator: 'neutral',
+}
+
+export function creatorStanding(c: {
+  qualification_status?: string | null
+  review_state?: string | null
+  entity_type?: string | null
+  entity_source?: string | null
+}): CreatorStanding {
+  if (c.review_state === 'approved') return 'confirmed'
+  if (c.review_state === 'rejected') return 'not_a_creator'
+  // A person having said "this is a company" is a decision; the keyword
+  // heuristic having guessed it is only a reason to look.
+  if (c.entity_source === 'human' && c.entity_type && c.entity_type !== 'individual_creator') {
+    return 'not_a_creator'
+  }
+  if (c.qualification_status === 'qualified') return 'confirmed'
+  return 'needs_review'
+}
+export const standingLabel = (c: Parameters<typeof creatorStanding>[0]) =>
+  STANDING_LABELS[creatorStanding(c)]
 
 export const QUALIFICATION_LABELS: Record<string, string> = {
   qualified: 'Qualified',

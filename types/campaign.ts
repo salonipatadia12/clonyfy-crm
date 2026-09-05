@@ -104,14 +104,13 @@ export interface CampaignRow {
 }
 
 export interface CampaignStats {
+  /** Influencers added to the campaign. */
   creators: number
-  shortlisted: number
+  notContacted: number
   contacted: number
   replied: number
-  agreed: number
-  live: number
-  completed: number
-  rejected: number
+  interested: number
+  declined: number
   byStage: Record<string, number>
   followUpsOverdue: number
   deliverablesTotal: number
@@ -192,6 +191,10 @@ export interface OutreachActivityRow {
 
 /** A creator's membership of one campaign. This is what carries the stage. */
 export interface CampaignCreator {
+  /** Channel last used to reach this influencer for this campaign. */
+  outreach_channel: string | null
+  /** Plain date of the last outbound contact. */
+  last_contacted_on: string | null
   /** Non-null when this row was created by the demo seed. */
   demo_run_id?: string | null
   id: string
@@ -274,7 +277,7 @@ export interface CreatorRow {
   last_verified_at: string | null
   scraped_at: string | null
   /** Campaign memberships — a creator can be in several at once. */
-  campaigns: { campaign_id: string; campaign_name: string; stage: string; client_name: string | null }[]
+  campaigns: { membership_id: string; campaign_id: string; campaign_name: string; stage: string; client_name: string | null }[]
 }
 
 export interface CreatorListResponse {
@@ -371,7 +374,7 @@ export interface TodayResponse {
   campaignsAtRisk: CampaignAtRisk[]
   activeCampaigns: {
     id: string; name: string; client_name: string | null; product_name: string | null
-    status: string; creators: number; contacted: number; agreed: number; live: number; target: number | null
+    status: string; creators: number; contacted: number; replied: number; interested: number; followUpsOverdue: number
   }[]
   recentActivity: { id: string; user_name: string | null; action: string; profile_handle: string | null; created_at: string; metadata: Record<string, unknown> | null }[]
 }
@@ -452,4 +455,39 @@ export interface AnalyticsPayload {
     published: number; views: number | null
   }[]
   byOwner: { id: string | null; name: string; creators: number; contacted: number; replied: number; agreed: number }[]
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+export interface DashboardLine {
+  campaign_creator_id: string
+  campaign_id: string
+  campaign_name: string
+  handle: string
+  full_name: string | null
+  stage: string
+  date: string | null
+  channel: string | null
+}
+
+export interface DashboardResponse {
+  stats: {
+    total: number
+    withEmail: number
+    withPhone: number
+    usBased: number
+    notContacted: number
+    followUpsDue: number
+    activeCampaigns: number
+  }
+  followUpsToday: DashboardLine[]
+  recentReplies: DashboardLine[]
+  activeCampaigns: {
+    id: string; name: string
+    client_name: string | null; product_name: string | null
+    creators: number; contacted: number; replied: number; interested: number
+    demo_run_id: string | null
+  }[]
+  demoRows: number
 }
